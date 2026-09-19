@@ -1963,4 +1963,11 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)
+)st.markdown("""
+<div class="footer">
+    <b>NABD</b><br>
+    Developed by Minna Mohammed<br>
+    Student Project • 2026<br>
+    © 2026 Minna — All Rights Reserved
+</div>
+""", unsafe_allow_html=True)
