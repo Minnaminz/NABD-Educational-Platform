@@ -1,3 +1,4 @@
+```python
 from pathlib import Path
 import random
 import html
@@ -457,28 +458,11 @@ html, body, [class*="css"] {{
     box-shadow: 0 10px 30px rgba(15,23,42,.06);
 }}
 
-/* FIX: Make question text clearly visible */
 .question-card h2,
 .question-card h3,
 .question-card h4,
 .question-card p {{
     color: #111827 !important;
-}}
-
-.question-card h2 {{
-    font-size: 30px;
-    line-height: 1.5;
-    margin-top: 14px;
-}}
-
-.question-card h3 {{
-    font-size: 24px;
-    line-height: 1.5;
-    margin-top: 12px;
-}}
-
-.question-card p {{
-    line-height: 1.7;
 }}
 
 .skill-card {{
@@ -487,6 +471,11 @@ html, body, [class*="css"] {{
     border-radius: 22px;
     padding: 22px;
     margin-bottom: 15px;
+    color: #111827 !important;
+}}
+
+.skill-card span {{
+    color: #111827 !important;
 }}
 
 .big-score {{
@@ -1499,6 +1488,7 @@ elif st.session_state.page == "Learning Snapshot":
             display:flex;
             justify-content:space-between;
             font-weight:800;
+            color:#111827 !important;
             ">
 
             <span>{skill}</span>
@@ -1860,7 +1850,10 @@ elif st.session_state.page == "Reassessment":
 
         st.session_state.reassessment_submitted = False
 
-    if not st.session_state.reassessment_submitted:
+    if not st.session_state.get(
+        "reassessment_submitted",
+        False
+    ):
 
         questions = st.session_state.reassessment_questions
 
@@ -1988,13 +1981,11 @@ elif st.session_state.page == "Reassessment":
 # =========================================================
 
 st.markdown(
-    """
+    f"""
     <div class="footer">
-        <b>NABD</b><br>
-        Developed by Minna Mohammed<br>
-        Student Project • 2026<br>
-        © 2026 Minna — All Rights Reserved
+    {L["footer"]}
     </div>
     """,
     unsafe_allow_html=True
 )
+```
