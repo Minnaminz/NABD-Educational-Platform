@@ -2794,7 +2794,7 @@ st.markdown(
     f"""
     <div class="footer">
         {L["footer"]}<br>
-        © 2026 MINNA — NABD Educational Platform. All rights reserved.
+        © 2026 MINNA MOHAMMED — NABD Educational Platform. All rights reserved.
     </div>
     """,
     unsafe_allow_html=True
