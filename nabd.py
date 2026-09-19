@@ -2793,7 +2793,8 @@ elif st.session_state.page == "Reassessment":
 st.markdown(
     f"""
     <div class="footer">
-    {L["footer"]}
+        {L["footer"]}<br>
+        © 2026 MINNA — NABD Educational Platform. All rights reserved.
     </div>
     """,
     unsafe_allow_html=True
