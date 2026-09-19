@@ -1,8 +1,10 @@
 from pathlib import Path
 import random
 import html
+from google import genai
 import pandas as pd
 import streamlit as st
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 from sklearn.tree import DecisionTreeClassifier
 
 # =========================================================
