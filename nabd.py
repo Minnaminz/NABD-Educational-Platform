@@ -290,6 +290,16 @@ if "practice_questions" not in st.session_state:
 if "practice_answers" not in st.session_state:
     st.session_state.practice_answers = {}
 
+# Reassessment state
+if "reassessment_questions" not in st.session_state:
+    st.session_state.reassessment_questions = []
+
+if "reassessment_answers" not in st.session_state:
+    st.session_state.reassessment_answers = {}
+
+if "reassessment_submitted" not in st.session_state:
+    st.session_state.reassessment_submitted = False
+
 # =========================================================
 # LANGUAGE
 # =========================================================
@@ -445,6 +455,30 @@ html, body, [class*="css"] {{
     border-radius: 26px;
     padding: 30px;
     box-shadow: 0 10px 30px rgba(15,23,42,.06);
+}}
+
+/* FIX: Make question text clearly visible */
+.question-card h2,
+.question-card h3,
+.question-card h4,
+.question-card p {{
+    color: #111827 !important;
+}}
+
+.question-card h2 {{
+    font-size: 30px;
+    line-height: 1.5;
+    margin-top: 14px;
+}}
+
+.question-card h3 {{
+    font-size: 24px;
+    line-height: 1.5;
+    margin-top: 12px;
+}}
+
+.question-card p {{
+    line-height: 1.7;
 }}
 
 .skill-card {{
@@ -1826,10 +1860,7 @@ elif st.session_state.page == "Reassessment":
 
         st.session_state.reassessment_submitted = False
 
-    if not st.session_state.get(
-        "reassessment_submitted",
-        False
-    ):
+    if not st.session_state.reassessment_submitted:
 
         questions = st.session_state.reassessment_questions
 
@@ -1952,9 +1983,6 @@ elif st.session_state.page == "Reassessment":
             f"✓ {L['completed']}"
         )
 
-# =========================================================
-# FOOTER
-# =========================================================
 # =========================================================
 # FOOTER
 # =========================================================
