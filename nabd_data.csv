@@ -1,0 +1,11 @@
+student_id,concept,skill,error_type,correct
+1,Algebra,Linear Equations,Division error,0
+2,Algebra,Linear Equations,Sign manipulation error,0
+3,Arithmetic,Multiplication,Multiplication fact error,0
+4,Arithmetic,Percentages,Percentage calculation error,0
+5,Algebra,Linear Equations,None,1
+6,Arithmetic,Multiplication,None,1
+7,Arithmetic,Percentages,None,1
+8,Algebra,Linear Equations,Division error,0
+9,Arithmetic,Percentages,Percentage calculation error,0
+10,Arithmetic,Multiplication,None,1
