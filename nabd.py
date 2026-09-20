@@ -1645,7 +1645,7 @@ if st.session_state.page == "Home":
 div.stButton > button p,
 div.stButton > button span {{
     color: #ffffff !important;
-}
+}}
         <div class="hero-title">
         🧠 NABD<br>
         <span>{L["hero_title2"]}</span>
