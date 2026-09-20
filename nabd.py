@@ -32,65 +32,81 @@ try:
     )
 except Exception:
     client = None
+
+        ```python
 def generate_ai_question(skill, difficulty, language="English"):
     if client is None:
         return None
 
     if language == "Arabic":
         prompt = f"""
-        Create one educational multiple-choice math question.
+Create one educational multiple-choice math question.
 
-        Skill: {skill}
-        Difficulty: {difficulty}
+Skill: {skill}
+Difficulty: {difficulty}
 
-        The question must be in Arabic.
-        Provide exactly 4 answer choices.
-        Provide the correct answer.
-        Provide a clear step-by-step solution.
+The question must be in Arabic.
+Provide exactly 4 answer choices.
+Provide the correct answer.
+Provide a clear step-by-step solution.
 
-        Return ONLY valid JSON in this format:
-        {{
-            "question": "...",
-            "options": ["...", "...", "...", "..."],
-            "answer": "...",
-            "solution": "..."
-        }}
-        """
+Return ONLY valid JSON in this format:
+{{
+    "question": "...",
+    "options": ["...", "...", "...", "..."],
+    "answer": "...",
+    "solution": "..."
+}}
+"""
     else:
         prompt = f"""
-        Create one educational multiple-choice math question.
+Create one educational multiple-choice math question.
 
-        Skill: {skill}
-        Difficulty: {difficulty}
+Skill: {skill}
+Difficulty: {difficulty}
 
-        The question must be in English.
-        Provide exactly 4 answer choices.
-        Provide the correct answer.
-        Provide a clear step-by-step solution.
+The question must be in English.
+Provide exactly 4 answer choices.
+Provide the correct answer.
+Provide a clear step-by-step solution.
 
-        Return ONLY valid JSON in this format:
-        {{
-            "question": "...",
-            "options": ["...", "...", "...", "..."],
-            "answer": "...",
-            "solution": "..."
-        }}
-        """
+Return ONLY valid JSON in this format:
+{{
+    "question": "...",
+    "options": ["...", "...", "...", "..."],
+    "answer": "...",
+    "solution": "..."
+}}
+"""
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
-        )
+    # Try up to 3 times if Gemini is temporarily unavailable
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json"
+                }
+            )
 
-        return json.loads(response.text)
+            return json.loads(response.text)
 
-    except Exception as e:
-        st.error(f"AI Error: {e}")
-        return None
+        except Exception as e:
+            error_message = str(e)
+
+            # Retry temporary 503/high-demand errors
+            if "503" in error_message or "UNAVAILABLE" in error_message:
+                import time
+                time.sleep(2)
+                continue
+
+            st.error(f"AI Error: {e}")
+            return None
+
+    st.error("Gemini is temporarily busy. Please try again in a few seconds.")
+    return None
+```
 
 # =========================================================
 # PATHS + DATA
