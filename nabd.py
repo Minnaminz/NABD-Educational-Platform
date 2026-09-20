@@ -775,7 +775,6 @@ div.stButton > button {{
     border-radius: 14px;
     min-height: 48px;
     font-weight: 700;
-st.markdown("""
 <style>
     /* Make default text visible */
     .stMarkdown,
