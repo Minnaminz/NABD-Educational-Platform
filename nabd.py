@@ -758,7 +758,6 @@ p {{
 .ai-generator .answer-choice * {
     color: #ffffff !important;
 }
-}}
 
 /* =========================
    SKILL CARD
