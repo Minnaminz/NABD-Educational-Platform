@@ -777,14 +777,61 @@ div.stButton > button {{
     font-weight: 700;
 }}
 
-/* Make default text visible */
+/* =========================
+   TEXT COLORS
+   ========================= */
+
+/* Default text on white/light backgrounds */
 .stMarkdown,
 .stText,
 label,
-p,
-span,
-div {{
+p {
     color: #111827;
+}
+
+/* Dark hero section */
+.hero,
+.hero * {
+    color: white !important;
+}
+
+/* Keep hero gradient title text */
+.hero-title {
+    color: white !important;
+}
+
+.hero-title span {
+    color: transparent !important;
+}
+
+/* Dark sidebar */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+/* White cards */
+.stat-card,
+.stat-card *,
+.journey-card,
+.journey-card *,
+.question-card,
+.question-card *,
+.path-card,
+.path-card * {
+    color: #111827;
+}
+
+/* Skill cards */
+.skill-card,
+.skill-card * {
+    color: #111827 !important;
+}
+
+/* Footer */
+.footer {
+    color: #94a3b8 !important;
+}
 }}
 
 </style>
