@@ -2363,6 +2363,7 @@ elif st.session_state.page == "Smart Practice":
         if st.button(
     key="ai_generate_button"
 ):
+    )
 
         pool = [
             q
