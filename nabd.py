@@ -826,9 +826,6 @@ div.stButton > button {{
     border-radius: 14px;
     min-height: 48px;
     font-weight: 700;
-    div.stButton > button p,
-div.stButton > button span {{
-    color: #ffffff !important;
 }}
 
 </style>
@@ -1570,7 +1567,10 @@ with st.sidebar:
         ">
         🧠 NABD
         </div>
-
+div.stButton > button p,
+div.stButton > button span {
+    color: #ffffff !important;
+}
         <div style="
         opacity:.65;
         font-size:12px;
