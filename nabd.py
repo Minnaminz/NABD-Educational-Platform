@@ -709,6 +709,7 @@ html, body, [class*="css"] {{
     opacity: 100;
     max-width: 700px;
     margin-top: 18px;
+    color: #ffffff;
 }}
 
 /* =========================
