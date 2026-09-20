@@ -706,7 +706,7 @@ html, body, [class*="css"] {{
 .hero-desc {{
     font-size: 18px;
     line-height: 1.7;
-    opacity: .85;
+    opacity: 100;
     max-width: 700px;
     margin-top: 18px;
 }}
