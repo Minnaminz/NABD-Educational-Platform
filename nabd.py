@@ -104,8 +104,6 @@ Return ONLY valid JSON in this format:
 
     st.error("Gemini is temporarily busy. Please try again in a few seconds.")
     return None
-```
-
 # =========================================================
 # PATHS + DATA
 # =========================================================
