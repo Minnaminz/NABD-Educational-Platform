@@ -787,7 +787,7 @@ div.stButton > button {{
     }
 </style>
 """, unsafe_allow_html=True)
-}
+
 </style>
 """,
     unsafe_allow_html=True
