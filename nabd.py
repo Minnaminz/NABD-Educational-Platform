@@ -2360,7 +2360,9 @@ elif st.session_state.page == "Smart Practice":
     if st.button(
         f"✨ {L['generate']}",
         use_container_width=True
-    ):
+        if st.button(
+    key="ai_generate_button"
+):
 
         pool = [
             q
