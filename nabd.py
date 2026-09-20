@@ -1567,10 +1567,6 @@ with st.sidebar:
         ">
         🧠 NABD
         </div>
-div.stButton > button p,
-div.stButton > button span {
-    color: #ffffff !important;
-}
         <div style="
         opacity:.65;
         font-size:12px;
@@ -1646,7 +1642,10 @@ if st.session_state.page == "Home":
         <div class="hero-small">
         {L["hero_small"]}
         </div>
-
+div.stButton > button p,
+div.stButton > button span {{
+    color: #ffffff !important;
+}
         <div class="hero-title">
         🧠 NABD<br>
         <span>{L["hero_title2"]}</span>
