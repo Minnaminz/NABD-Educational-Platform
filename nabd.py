@@ -554,8 +554,6 @@ is_arabic = st.session_state.lang == "العربية"
 
 direction = "rtl" if is_arabic else "ltr"
 text_align = "right" if is_arabic else "left"
-
-
 # =========================================================
 # CSS
 # =========================================================
@@ -578,6 +576,10 @@ html, body, [class*="css"] {{
     padding-bottom: 4rem;
 }}
 
+/* =========================
+   SIDEBAR - DARK
+   ========================= */
+
 [data-testid="stSidebar"] {{
     background: linear-gradient(
         180deg,
@@ -589,6 +591,10 @@ html, body, [class*="css"] {{
 [data-testid="stSidebar"] * {{
     color: white !important;
 }}
+
+/* =========================
+   HERO - DARK
+   ========================= */
 
 .hero {{
     background:
@@ -617,15 +623,24 @@ html, body, [class*="css"] {{
     overflow: hidden;
 }}
 
-.hero::after {{
-    content: "";
-    position: absolute;
-    width: 220px;
-    height: 220px;
-    border-radius: 50%;
-    border: 1px solid rgba(255,255,255,.12);
-    right: 5%;
-    top: 15%;
+.hero,
+.hero * {{
+    color: white !important;
+}}
+
+.hero-title {{
+    color: white !important;
+}}
+
+.hero-title span {{
+    background: linear-gradient(
+        90deg,
+        #93c5fd,
+        #c4b5fd
+    );
+
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }}
 
 .hero-small {{
@@ -642,17 +657,6 @@ html, body, [class*="css"] {{
     margin-top: 15px;
 }}
 
-.hero-title span {{
-    background: linear-gradient(
-        90deg,
-        #93c5fd,
-        #c4b5fd
-    );
-
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}}
-
 .hero-desc {{
     font-size: 18px;
     line-height: 1.7;
@@ -661,12 +665,20 @@ html, body, [class*="css"] {{
     margin-top: 18px;
 }}
 
-.section-title {{
-    font-size: 28px;
-    font-weight: 850;
-    margin-top: 30px;
-    margin-bottom: 18px;
+/* =========================
+   NORMAL WHITE BACKGROUND
+   ========================= */
+
+.stMarkdown,
+.stText,
+label,
+p {{
+    color: #111827;
 }}
+
+/* =========================
+   WHITE CARDS
+   ========================= */
 
 .stat-card {{
     background: white;
@@ -675,10 +687,15 @@ html, body, [class*="css"] {{
     padding: 25px;
     min-height: 135px;
     box-shadow: 0 8px 25px rgba(15,23,42,.06);
+    color: #111827;
+}}
+
+.stat-card * {{
+    color: #111827 !important;
 }}
 
 .stat-label {{
-    color: #64748b;
+    color: #64748b !important;
     font-size: 14px;
     font-weight: 600;
 }}
@@ -686,7 +703,7 @@ html, body, [class*="css"] {{
 .stat-value {{
     font-size: 32px;
     font-weight: 900;
-    color: #111827;
+    color: #111827 !important;
     margin-top: 8px;
 }}
 
@@ -697,12 +714,17 @@ html, body, [class*="css"] {{
     padding: 25px;
     min-height: 185px;
     box-shadow: 0 8px 25px rgba(15,23,42,.05);
+    color: #111827;
+}}
+
+.journey-card * {{
+    color: #111827 !important;
 }}
 
 .journey-number {{
     font-size: 13px;
     font-weight: 800;
-    color: #6366f1;
+    color: #6366f1 !important;
 }}
 
 .journey-title {{
@@ -712,7 +734,7 @@ html, body, [class*="css"] {{
 }}
 
 .journey-desc {{
-    color: #64748b;
+    color: #64748b !important;
     line-height: 1.6;
     margin-top: 8px;
 }}
@@ -723,14 +745,16 @@ html, body, [class*="css"] {{
     border-radius: 26px;
     padding: 30px;
     box-shadow: 0 10px 30px rgba(15,23,42,.06);
+    color: #111827;
 }}
 
-.question-card h2,
-.question-card h3,
-.question-card h4,
-.question-card p {{
+.question-card * {{
     color: #111827 !important;
 }}
+
+/* =========================
+   SKILL CARD
+   ========================= */
 
 .skill-card {{
     background: linear-gradient(
@@ -746,16 +770,13 @@ html, body, [class*="css"] {{
     color: #111827 !important;
 }}
 
-.skill-card span,
-.skill-card div {{
+.skill-card * {{
     color: #111827 !important;
 }}
 
-.big-score {{
-    font-size: 58px;
-    font-weight: 900;
-    color: #4f46e5;
-}}
+/* =========================
+   PATH CARD
+   ========================= */
 
 .path-card {{
     background: white;
@@ -763,13 +784,36 @@ html, body, [class*="css"] {{
     border: 1px solid #e5e7eb;
     padding: 28px;
     box-shadow: 0 8px 25px rgba(15,23,42,.05);
+    color: #111827;
 }}
+
+.path-card * {{
+    color: #111827 !important;
+}}
+
+/* =========================
+   SCORE
+   ========================= */
+
+.big-score {{
+    font-size: 58px;
+    font-weight: 900;
+    color: #4f46e5 !important;
+}}
+
+/* =========================
+   FOOTER
+   ========================= */
 
 .footer {{
     text-align: center;
-    color: #94a3b8;
+    color: #94a3b8 !important;
     padding: 30px;
 }}
+
+/* =========================
+   BUTTONS
+   ========================= */
 
 div.stButton > button {{
     border-radius: 14px;
@@ -777,66 +821,11 @@ div.stButton > button {{
     font-weight: 700;
 }}
 
-/* =========================
-   TEXT COLORS
-   ========================= */
-
-/* Default text on white/light backgrounds */
-.stMarkdown,
-.stText,
-label,
-p {
-    color: #111827;
-}
-
-/* Dark hero section */
-.hero,
-.hero * {
-    color: white !important;
-}
-
-/* Keep hero gradient title text */
-.hero-title {
-    color: white !important;
-}
-
-.hero-title span {
-    color: transparent !important;
-}
-
-/* Dark sidebar */
-[data-testid="stSidebar"],
-[data-testid="stSidebar"] * {
-    color: white !important;
-}
-
-/* White cards */
-.stat-card,
-.stat-card *,
-.journey-card,
-.journey-card *,
-.question-card,
-.question-card *,
-.path-card,
-.path-card * {
-    color: #111827;
-}
-
-/* Skill cards */
-.skill-card,
-.skill-card * {
-    color: #111827 !important;
-}
-
-/* Footer */
-.footer {
-    color: #94a3b8 !important;
-}
-}}
-
 </style>
 """,
     unsafe_allow_html=True
+)
+
 )
 # =========================================================
 # MODEL
