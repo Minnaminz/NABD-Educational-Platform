@@ -695,7 +695,7 @@ p {{
 }}
 
 .stat-label {{
-    color: #ffffff !important;
+    color:#64748b !important;
     font-size: 14px;
     font-weight: 600;
 }}
@@ -703,7 +703,7 @@ p {{
 .stat-value {{
     font-size: 32px;
     font-weight: 900;
-    color: #111827 !important;
+    color: #ffffff !important;
     margin-top: 8px;
 }}
 
