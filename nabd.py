@@ -775,16 +775,20 @@ div.stButton > button {{
     border-radius: 14px;
     min-height: 48px;
     font-weight: 700;
-}}
-/* Make default text visible */
-.stMarkdown,
-.stText,
-label,
-p,
-span,
-div {
-    color: #111827;
-}
+st.markdown("""
+<style>
+    /* Make default text visible */
+    .stMarkdown,
+    .stText,
+    label,
+    p,
+    span,
+    div {
+        color: #111827;
+    }
+</style>
+""", unsafe_allow_html=True)
+```}
 </style>
 """,
     unsafe_allow_html=True
