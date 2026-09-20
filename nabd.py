@@ -2354,7 +2354,7 @@ elif st.session_state.page == "Smart Practice":
 
     selected_skill = st.selectbox(
         L["choose_skill"],
-        skills
+        skills):
     )
 
     if st.button(
