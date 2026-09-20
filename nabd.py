@@ -746,7 +746,7 @@ p {{
 /* Generator text = WHITE */
 .ai-generator,
 .ai-generator * {
-    color: white !important;
+    color: #ffffff !important;
 }
 
 /* Question itself = DARK BLUE */
