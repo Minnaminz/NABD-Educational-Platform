@@ -1481,7 +1481,7 @@ solution
     }
 
     response = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model="gemini-3.8-flash",
         contents=prompt,
         config={
             "response_mime_type": "application/json",
@@ -2468,12 +2468,21 @@ elif st.session_state.page == "Smart Practice":
 
 elif st.session_state.page == "AI Questions":
 
-    st.title(
-        f"🤖 {L['ai_title']}"
-    )
+    st.markdown(
+        f"""
+        <div class="ai-generator">
 
-    st.write(
-        L["ai_desc"]
+        <h1 style="color:#111827 !important;">
+        🤖 {L["ai_title"]}
+        </h1>
+
+        <p style="color:#ffffff !important;">
+        {L["ai_desc"]}
+        </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     skills = sorted(
@@ -2493,24 +2502,60 @@ elif st.session_state.page == "AI Questions":
 
     with col1:
 
+        st.markdown(
+            f"""
+            <div class="ai-generator">
+                <p style="color:#ffffff !important; font-weight:700;">
+                    {L["ai_skill"]}
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
         selected_skill = st.selectbox(
             L["ai_skill"],
-            skills
+            skills,
+            label_visibility="collapsed"
         )
 
     with col2:
 
+        st.markdown(
+            f"""
+            <div class="ai-generator">
+                <p style="color:#ffffff !important; font-weight:700;">
+                    {L["ai_difficulty"]}
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
         selected_difficulty = st.selectbox(
             L["ai_difficulty"],
-            difficulties
+            difficulties,
+            label_visibility="collapsed"
         )
 
     with col3:
 
+        st.markdown(
+            f"""
+            <div class="ai-generator">
+                <p style="color:#ffffff !important; font-weight:700;">
+                    {L["ai_count"]}
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
         question_count = st.selectbox(
             L["ai_count"],
             [3, 5, 6, 8, 10],
-            index=1
+            index=1,
+            label_visibility="collapsed"
         )
 
     if st.button(
@@ -2569,8 +2614,11 @@ elif st.session_state.page == "AI Questions":
 
         st.markdown(
             f"""
-            <div class="section-title">
-            🤖 {L["ai_generated"]}
+            <div class="ai-generator">
+                <div class="section-title"
+                     style="color:#ffffff !important;">
+                    🤖 {L["ai_generated"]}
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -2584,26 +2632,41 @@ elif st.session_state.page == "AI Questions":
                 str(q["question"])
             )
 
+            # QUESTION = DARK BLUE
             st.markdown(
                 f"""
-                <div class="question-card">
+                <div class="ai-generator"
+                     style="
+                     background:white;
+                     border-radius:20px;
+                     padding:20px;
+                     margin-top:20px;
+                     ">
 
-                <div style="
-                color:#6366f1;
-                font-weight:800;
-                ">
-                {L["question"]} {i + 1}
-                </div>
+                    <div style="
+                    color:#ffffff !important;
+                    font-weight:800;
+                    font-size:14px;
+                    margin-bottom:10px;
+                    ">
+                    {L["question"]} {i + 1}
+                    </div>
 
-                <h3>
-                {question_text}
-                </h3>
+                    <div class="question-text"
+                         style="
+                         color:#1e3a8a !important;
+                         font-size:20px;
+                         font-weight:800;
+                         ">
+                    {question_text}
+                    </div>
 
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
+            # ANSWER CHOICES
             answer = st.radio(
                 L["choose"],
                 q["options"],
@@ -2642,7 +2705,6 @@ elif st.session_state.page == "AI Questions":
                         q["solution"],
                         language="text"
                     )
-
 
 # =========================================================
 # LEARNING PATH
