@@ -560,6 +560,11 @@ text_align = "right" if is_arabic else "left"
 # CSS
 # =========================================================
 
+```python
+# =========================================================
+# CSS
+# =========================================================
+
 st.markdown(
     f"""
 <style>
@@ -775,25 +780,22 @@ div.stButton > button {{
     border-radius: 14px;
     min-height: 48px;
     font-weight: 700;
-<style>
-    /* Make default text visible */
-    .stMarkdown,
-    .stText,
-    label,
-    p,
-    span,
-    div {
-        color: #111827;
-    }
-</style>
-""", unsafe_allow_html=True)
+}}
+
+/* Make default text visible */
+.stMarkdown,
+.stText,
+label,
+p,
+span,
+div {{
+    color: #111827;
+}}
 
 </style>
 """,
     unsafe_allow_html=True
 )
-
-
 # =========================================================
 # MODEL
 # =========================================================
