@@ -746,18 +746,18 @@ p {{
 /* AI QUESTION GENERATOR */
 
 .ai-generator,
-.ai-generator * {
+.ai-generator * {{
     color: #ffffff !important;
-}
+}}
 
-.ai-generator .question-text {
+.ai-generator .question-text {{
     color: #1e3a8a !important;
-}
+}}
 
 .ai-generator .answer-choice,
-.ai-generator .answer-choice * {
+.ai-generator .answer-choice * {{
     color: #ffffff !important;
-}
+}}
 
 /* =========================
    SKILL CARD
