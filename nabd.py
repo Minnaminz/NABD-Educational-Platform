@@ -1481,7 +1481,7 @@ solution
     }
 
     response = client.models.generate_content(
-        model="gemini-3.8-flash",
+        model="gemini-3.6-flash",
         contents=prompt,
         config={
             "response_mime_type": "application/json",
@@ -1621,10 +1621,8 @@ with st.sidebar:
     for icon, label, page_key in pages:
 
         if st.button(
-    f"✨ {L['ai_generate']}",
-    use_container_width=True,
-    key="ai_generate_button"
-):
+            f"{icon}  {label}",
+            use_container_width=True
         ):
 
             st.session_state.page = page_key
@@ -2467,7 +2465,6 @@ elif st.session_state.page == "Smart Practice":
 # =========================================================
 # AI QUESTION GENERATOR
 # =========================================================
-
 elif st.session_state.page == "AI Questions":
 
     st.markdown(
@@ -2707,6 +2704,8 @@ elif st.session_state.page == "AI Questions":
                         q["solution"],
                         language="text"
                     )
+
+
 
 # =========================================================
 # LEARNING PATH
