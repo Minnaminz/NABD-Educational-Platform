@@ -829,7 +829,6 @@ div.stButton > button {{
     div.stButton > button p,
 div.stButton > button span {{
     color: #ffffff !important;
-}
 }}
 
 </style>
