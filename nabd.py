@@ -695,7 +695,7 @@ p {{
 }}
 
 .stat-label {{
-    color: #64748b !important;
+    color: ##ffffff !important;
     font-size: 14px;
     font-weight: 600;
 }}
