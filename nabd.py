@@ -776,7 +776,15 @@ div.stButton > button {{
     min-height: 48px;
     font-weight: 700;
 }}
-
+/* Make default text visible */
+.stMarkdown,
+.stText,
+label,
+p,
+span,
+div {
+    color: #111827;
+}
 </style>
 """,
     unsafe_allow_html=True
