@@ -1625,6 +1625,7 @@ with st.sidebar:
     use_container_width=True,
     key="ai_generate_button"
 ):
+        ):
 
             st.session_state.page = page_key
 
