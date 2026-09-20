@@ -32,8 +32,6 @@ try:
     )
 except Exception:
     client = None
-
-        ```python
 def generate_ai_question(skill, difficulty, language="English"):
     if client is None:
         return None
