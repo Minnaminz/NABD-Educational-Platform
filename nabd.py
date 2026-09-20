@@ -826,6 +826,7 @@ div.stButton > button {{
     border-radius: 14px;
     min-height: 48px;
     font-weight: 700;
+    color: white;
 }}
 
 </style>
