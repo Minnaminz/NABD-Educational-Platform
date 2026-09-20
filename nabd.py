@@ -743,31 +743,20 @@ p {{
    AI QUESTION GENERATOR
    ========================= */
 
-/* Generator text = WHITE */
+/* AI QUESTION GENERATOR */
+
+.ai-generator,
 .ai-generator * {
     color: #ffffff !important;
 }
 
-/* Question itself = DARK BLUE */
 .ai-generator .question-text {
     color: #1e3a8a !important;
 }
 
-/* Answer choices = WHITE */
 .ai-generator .answer-choice,
 .ai-generator .answer-choice * {
-    color: white !important;
-}
-
-/* Labels and descriptions = WHITE */
-.ai-generator label,
-.ai-generator p,
-.ai-generator span,
-.ai-generator h1,
-.ai-generator h2,
-.ai-generator h3,
-.ai-generator h4 {
-    color: white !important;
+    color: #ffffff !important;
 }
 }}
 
