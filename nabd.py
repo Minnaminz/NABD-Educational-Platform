@@ -1,4 +1,3 @@
-```python
 from pathlib import Path
 import random
 import html
@@ -3834,4 +3833,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-```
+
