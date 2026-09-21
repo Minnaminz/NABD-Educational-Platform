@@ -34,26 +34,45 @@ except Exception:
     client = None
 
 
+RETRYABLE_AI_ERRORS = (
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+    "UNAVAILABLE",
+    "RESOURCE_EXHAUSTED",
+    "DEADLINE_EXCEEDED",
+    "INTERNAL"
+)
+
+
+def is_retryable_ai_error(error):
+    message = str(error).upper()
+    return any(
+        error_code in message
+        for error_code in RETRYABLE_AI_ERRORS
+    )
+
+
 def generate_ai_question(
     skill,
     difficulty,
     language="English"
 ):
-
     if client is None:
         return None
 
-    if language == "Arabic":
-
-        prompt = f"""
+    prompt = f"""
 Create one educational multiple-choice math question.
 
 Skill: {skill}
 Difficulty: {difficulty}
+Language: {language}
 
-The question must be in Arabic.
+The question must be in {language}.
 Provide exactly 4 answer choices.
-Provide the correct answer.
+Provide exactly one correct answer.
 Provide a clear step-by-step solution.
 
 IMPORTANT:
@@ -72,39 +91,8 @@ Return ONLY valid JSON in this format:
 }}
 """
 
-    else:
-
-        prompt = f"""
-Create one educational multiple-choice math question.
-
-Skill: {skill}
-Difficulty: {difficulty}
-
-The question must be in English.
-Provide exactly 4 answer choices.
-Provide the correct answer.
-Provide a clear step-by-step solution.
-
-IMPORTANT:
-- Return plain text only inside the JSON fields.
-- Do not use HTML tags.
-- Do not use Markdown formatting.
-- Do not use code blocks.
-- Do not include <div>, <p>, <span>, <br>, or any other HTML.
-
-Return ONLY valid JSON in this format:
-{{
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "answer": "...",
-    "solution": "..."
-}}
-"""
-
-    for attempt in range(3):
-
+    for attempt in range(4):
         try:
-
             response = client.models.generate_content(
                 model="gemini-3.8-flash",
                 contents=prompt,
@@ -116,27 +104,11 @@ Return ONLY valid JSON in this format:
             return json.loads(response.text)
 
         except Exception as e:
-
-            error_message = str(e)
-
-            if (
-                "503" in error_message
-                or "UNAVAILABLE" in error_message
-            ):
-
-                if attempt < 2:
-                    time.sleep(2)
-                    continue
-
-            st.error(
-                f"AI Error: {e}"
-            )
+            if is_retryable_ai_error(e) and attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
 
             return None
-
-    st.error(
-        "Gemini is temporarily busy. Please try again in a few seconds."
-    )
 
     return None
 
@@ -149,17 +121,11 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "nabd_data.csv"
 
 try:
-
     df = pd.read_csv(DATA_FILE)
 
 except Exception as e:
-
-    st.error(
-        "Unable to load nabd_data.csv"
-    )
-
+    st.error("Unable to load nabd_data.csv")
     st.code(str(e))
-
     st.stop()
 
 
@@ -178,13 +144,8 @@ missing_columns = [
 ]
 
 if missing_columns:
-
-    st.error(
-        "Missing columns in nabd_data.csv"
-    )
-
+    st.error("Missing columns in nabd_data.csv")
     st.write(missing_columns)
-
     st.stop()
 
 
@@ -223,9 +184,7 @@ df["correct"] = pd.to_numeric(
 # =========================================================
 
 T = {
-
     "English": {
-
         "home": "Home",
         "assessment": "Assessment",
         "snapshot": "Learning Snapshot",
@@ -270,7 +229,6 @@ T = {
         "decision_tree": "Decision Tree",
 
         "placement": "Placement Assessment",
-
         "placement_desc":
             "Answer the questions to estimate your current "
             "learning level.",
@@ -296,12 +254,8 @@ T = {
         "assessed_skills": "Skills Assessed",
         "skill_performance": "Skill Performance",
 
-        "practice_needed":
-            "Skills That May Need Practice",
-
-        "no_practice":
-            "No skill fell below the practice threshold.",
-
+        "practice_needed": "Skills That May Need Practice",
+        "no_practice": "No skill fell below the practice threshold.",
         "recommended": "Practice recommended",
 
         "error_title": "Error Analysis",
@@ -311,8 +265,7 @@ T = {
         "potential": "Potential error pattern",
         "solution": "Step-by-step solution",
 
-        "perfect":
-            "Excellent! No incorrect answers.",
+        "perfect": "Excellent! No incorrect answers.",
 
         "smart_title": "Smart Practice",
         "choose_skill": "Choose a skill to practice",
@@ -328,21 +281,26 @@ T = {
             "This skill appears ready for reassessment.",
 
         "ai_title": "AI Question Generator",
-
         "ai_desc":
             "Generate personalized practice questions with AI.",
-
         "ai_skill": "Choose a skill",
         "ai_difficulty": "Choose difficulty",
         "ai_count": "Number of questions",
         "ai_generate": "Generate AI Questions",
         "ai_generated": "AI-generated questions",
-
         "ai_error":
             "Unable to generate questions right now.",
 
-        "path_title": "Your Learning Path",
+        "ai_busy":
+            "Gemini is temporarily busy. Please wait a few seconds and try again.",
 
+        "ai_setup":
+            "Gemini is not configured. Please check your Streamlit secret.",
+
+        "ai_connection":
+            "There was a connection problem with the AI service. Please try again.",
+
+        "path_title": "Your Learning Path",
         "path_desc":
             "NABD connects assessment, analysis, practice, "
             "and reassessment.",
@@ -353,7 +311,6 @@ T = {
         "step4": "Reassess your progress",
 
         "reassessment_title": "Reassessment",
-
         "reassessment_desc":
             "Take a new set of questions to compare your performance.",
 
@@ -362,48 +319,79 @@ T = {
         "change": "Change",
         "points": "pts",
 
-        "completed":
-            "Reassessment completed.",
+        "completed": "Reassessment completed.",
 
         "footer":
             "NABD • Personalized Learning Platform • "
             "Student Project Prototype",
 
-        "data_error":
-            "There is a problem with the dataset.",
-
-        "complete_first":
-            "Complete the assessment first.",
+        "data_error": "There is a problem with the dataset.",
+        "complete_first": "Complete the assessment first.",
 
         "theme": "Theme",
         "dark": "Dark",
         "light": "Light",
+
         "activities": "Learning Activities",
         "activities_title": "NABD Learning Activities",
-        "activities_desc": "Short challenges that make practice more engaging.",
+        "activities_desc":
+            "Short challenges that make practice more engaging.",
         "challenge": "NABD Challenge",
-        "challenge_desc": "Answer 5 questions and test your skills.",
+        "challenge_desc":
+            "Answer 5 questions and test your skills.",
         "start_challenge": "Start Challenge",
         "challenge_complete": "Challenge complete!",
         "challenge_score": "Challenge Score",
         "challenge_again": "Try Again",
         "challenge_locked": "Start the challenge to begin.",
+
         "ai_status": "AI status",
         "ai_ready": "Gemini is ready",
         "ai_unavailable": "Gemini is not configured",
-        "appearance": "Appearance"
+        "appearance": "Appearance",
+
+        "perfect_title": "Perfect score! 🏆",
+        "perfect_desc":
+            "Outstanding work! You showed a very strong understanding of the skills tested.",
+
+        "excellent_title": "Outstanding work! 🌟",
+        "excellent_desc":
+            "You showed a strong understanding of the math skills in this assessment.",
+
+        "good_title": "Great job! 💪",
+        "good_desc":
+            "You are building a solid understanding. Keep practicing and you can become even stronger.",
+
+        "developing_title": "Nice effort! 🚀",
+        "developing_desc":
+            "You are making progress. Review the questions you missed and try again.",
+
+        "beginner_title": "Every attempt helps you learn! 🌱",
+        "beginner_desc":
+            "Use your mistakes as clues, practice the key skills, and give it another try.",
+
+        "focus_area": "Focus area",
+        "keep_going": "Keep going!",
+        "practice_progress": "Practice is part of the learning process.",
+
+        "improved": "You improved! Keep building on this progress. 🎉",
+        "same_score":
+            "Your score stayed the same. That is okay — use your mistakes to guide your next practice session. 🌱",
+        "review_again":
+            "This attempt gives you useful information about what to review next. Keep going! 💪",
+
+        "correct_feedback": "Correct! Great work! ✓",
+        "incorrect_feedback":
+            "Not quite — use the solution to learn from this question."
     },
 
-
     "العربية": {
-
         "home": "الرئيسية",
         "assessment": "التقييم",
         "snapshot": "ملخص التعلم",
         "errors": "تحليل الأخطاء",
         "practice": "التدريب الذكي",
-        "ai_questions":
-            "مولّد الأسئلة بالذكاء الاصطناعي",
+        "ai_questions": "مولّد الأسئلة بالذكاء الاصطناعي",
         "path": "مسار التعلم",
         "reassessment": "إعادة التقييم",
 
@@ -411,14 +399,9 @@ T = {
         "english": "English",
         "arabic": "العربية",
 
-        "hero_small":
-            "تعلم شخصي • ذكاء اصطناعي • تحليل بيانات",
-
-        "hero_title":
-            "افهم طريقة تعلّمك.",
-
-        "hero_title2":
-            "وتحسّن بذكاء.",
+        "hero_small": "تعلم شخصي • ذكاء اصطناعي • تحليل بيانات",
+        "hero_title": "افهم طريقة تعلّمك.",
+        "hero_title2": "وتحسّن بذكاء.",
 
         "hero_desc":
             "يحوّل NABD نتائج التقييم إلى معلومات مفيدة "
@@ -427,23 +410,20 @@ T = {
 
         "start": "ابدأ التقييم",
         "continue": "تابع التعلم",
-
         "journey": "رحلة التعلم",
 
         "assess": "قيّم",
         "assess_desc": "قِس مستواك الحالي.",
 
         "analyze": "حلّل",
-        "analyze_desc":
-            "اكتشف المهارات التي قد تحتاج إلى دعم.",
+        "analyze_desc": "اكتشف المهارات التي قد تحتاج إلى دعم.",
 
         "practice_title": "تدرّب",
         "practice_desc":
             "ركّز على المهارات التي تحتاج إلى ممارسة.",
 
         "reassess_title": "أعد التقييم",
-        "reassess_desc":
-            "قِس تطورك بعد التدريب.",
+        "reassess_desc": "قِس تطورك بعد التدريب.",
 
         "questions": "الأسئلة",
         "skills": "المهارات",
@@ -451,7 +431,6 @@ T = {
         "decision_tree": "شجرة القرار",
 
         "placement": "التقييم التشخيصي",
-
         "placement_desc":
             "أجب عن الأسئلة لتحديد مستواك الحالي بشكل تقريبي.",
 
@@ -476,12 +455,9 @@ T = {
         "assessed_skills": "المهارات التي تم تقييمها",
         "skill_performance": "أداء المهارات",
 
-        "practice_needed":
-            "المهارات التي قد تحتاج إلى ممارسة",
-
+        "practice_needed": "المهارات التي قد تحتاج إلى ممارسة",
         "no_practice":
             "لم تنخفض أي مهارة عن حد الممارسة المحدد.",
-
         "recommended": "ممارسة مقترحة",
 
         "error_title": "تحليل الأخطاء",
@@ -491,8 +467,7 @@ T = {
         "potential": "نمط الخطأ المحتمل",
         "solution": "الحل خطوة بخطوة",
 
-        "perfect":
-            "ممتاز! لا توجد إجابات غير صحيحة.",
+        "perfect": "ممتاز! لا توجد إجابات غير صحيحة.",
 
         "smart_title": "التدريب الذكي",
         "choose_skill": "اختر مهارة للتدريب",
@@ -507,27 +482,27 @@ T = {
         "ready_reassess":
             "يبدو أن هذه المهارة جاهزة لإعادة التقييم.",
 
-        "ai_title":
-            "مولّد الأسئلة بالذكاء الاصطناعي",
-
+        "ai_title": "مولّد الأسئلة بالذكاء الاصطناعي",
         "ai_desc":
             "أنشئ أسئلة تدريبية مخصصة باستخدام الذكاء الاصطناعي.",
-
         "ai_skill": "اختر المهارة",
         "ai_difficulty": "اختر مستوى الصعوبة",
         "ai_count": "عدد الأسئلة",
+        "ai_generate": "إنشاء أسئلة بالذكاء الاصطناعي",
+        "ai_generated": "الأسئلة التي أنشأها الذكاء الاصطناعي",
 
-        "ai_generate":
-            "إنشاء أسئلة بالذكاء الاصطناعي",
+        "ai_error": "تعذر إنشاء الأسئلة حاليًا.",
 
-        "ai_generated":
-            "الأسئلة التي أنشأها الذكاء الاصطناعي",
+        "ai_busy":
+            "Gemini مشغول مؤقتًا. انتظر بضع ثوانٍ ثم حاول مرة أخرى.",
 
-        "ai_error":
-            "تعذر إنشاء الأسئلة حاليًا.",
+        "ai_setup":
+            "لم يتم إعداد Gemini. تأكد من إضافة المفتاح في Streamlit Secrets.",
+
+        "ai_connection":
+            "حدثت مشكلة في الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى.",
 
         "path_title": "مسار التعلم",
-
         "path_desc":
             "يربط NABD بين التقييم والتحليل والتدريب "
             "وإعادة التقييم.",
@@ -538,7 +513,6 @@ T = {
         "step4": "أعد تقييم تقدمك",
 
         "reassessment_title": "إعادة التقييم",
-
         "reassessment_desc":
             "أجب عن مجموعة جديدة من الأسئلة لمقارنة أدائك.",
 
@@ -547,35 +521,69 @@ T = {
         "change": "التغير",
         "points": "نقطة",
 
-        "completed":
-            "اكتملت إعادة التقييم.",
+        "completed": "اكتملت إعادة التقييم.",
 
         "footer":
             "NABD • منصة تعلم شخصي • نموذج مشروع طلابي",
 
-        "data_error":
-            "هناك مشكلة في بيانات المشروع.",
-
-        "complete_first":
-            "أكمل التقييم أولاً.",
+        "data_error": "هناك مشكلة في بيانات المشروع.",
+        "complete_first": "أكمل التقييم أولاً.",
 
         "theme": "المظهر",
         "dark": "داكن",
         "light": "فاتح",
+
         "activities": "الفعاليات التعليمية",
         "activities_title": "فعاليات NABD التعليمية",
-        "activities_desc": "تحديات قصيرة تجعل التدريب أكثر تفاعلاً ومتعة.",
+        "activities_desc":
+            "تحديات قصيرة تجعل التدريب أكثر تفاعلاً ومتعة.",
         "challenge": "تحدي NABD",
-        "challenge_desc": "أجب عن ٥ أسئلة واختبر مهاراتك.",
+        "challenge_desc":
+            "أجب عن ٥ أسئلة واختبر مهاراتك.",
         "start_challenge": "ابدأ التحدي",
         "challenge_complete": "اكتمل التحدي!",
         "challenge_score": "نتيجة التحدي",
         "challenge_again": "حاول مرة أخرى",
         "challenge_locked": "ابدأ التحدي للبدء.",
+
         "ai_status": "حالة الذكاء الاصطناعي",
         "ai_ready": "Gemini جاهز",
         "ai_unavailable": "Gemini غير مهيأ",
-        "appearance": "المظهر"
+        "appearance": "المظهر",
+
+        "perfect_title": "نتيجة كاملة! 🏆",
+        "perfect_desc":
+            "أداء رائع جدًا! أظهرت فهمًا قويًا جدًا للمهارات التي تم اختبارها.",
+
+        "excellent_title": "أداء رائع! 🌟",
+        "excellent_desc":
+            "أظهرت فهمًا قويًا لمهارات الرياضيات في هذا التقييم.",
+
+        "good_title": "أحسنت! 💪",
+        "good_desc":
+            "أنت تبني فهمًا جيدًا. استمر في التدريب وستصبح أقوى.",
+
+        "developing_title": "محاولة جميلة! 🚀",
+        "developing_desc":
+            "أنت تتقدم. راجع الأسئلة التي أخطأت فيها وحاول مرة أخرى.",
+
+        "beginner_title": "كل محاولة تساعدك على التعلم! 🌱",
+        "beginner_desc":
+            "استخدم أخطاءك كدليل، وتدرّب على المهارات الأساسية، ثم حاول مرة أخرى.",
+
+        "focus_area": "مجال التركيز",
+        "keep_going": "استمر!",
+        "practice_progress": "التدريب جزء طبيعي من رحلة التعلم.",
+
+        "improved": "تحسنت نتيجتك! استمر في البناء على هذا التقدم. 🎉",
+        "same_score":
+            "بقيت نتيجتك كما هي. لا بأس — استخدم أخطاءك لتحديد ما تحتاج إلى التدريب عليه. 🌱",
+        "review_again":
+            "هذه المحاولة أعطتك معلومات مفيدة عمّا تحتاج إلى مراجعته. استمر! 💪",
+
+        "correct_feedback": "إجابة صحيحة! أحسنت! ✓",
+        "incorrect_feedback":
+            "ليست الإجابة الصحيحة — استخدم الحل للتعلم من هذا السؤال."
     }
 }
 
@@ -584,62 +592,41 @@ T = {
 # SESSION STATE
 # =========================================================
 
-if "lang" not in st.session_state:
-    st.session_state.lang = "English"
+defaults = {
+    "lang": "English",
+    "theme": "Dark",
 
-if "theme" not in st.session_state:
-    st.session_state.theme = "Dark"
+    "challenge_questions": [],
+    "challenge_answers": {},
+    "challenge_submitted": False,
+    "challenge_score": None,
 
-if "challenge_questions" not in st.session_state:
-    st.session_state.challenge_questions = []
+    "page": "Home",
 
-if "challenge_answers" not in st.session_state:
-    st.session_state.challenge_answers = {}
+    "assessment_questions": [],
+    "assessment_answers": {},
+    "assessment_index": 0,
+    "assessment_submitted": False,
+    "assessment_celebrated": False,
 
-if "challenge_submitted" not in st.session_state:
-    st.session_state.challenge_submitted = False
+    "before_score": None,
+    "after_score": None,
 
-if "challenge_score" not in st.session_state:
-    st.session_state.challenge_score = None
+    "practice_questions": [],
+    "practice_answers": {},
+    "practice_submitted": False,
+    "practice_score": None,
 
-if "page" not in st.session_state:
-    st.session_state.page = "Home"
+    "reassessment_questions": [],
+    "reassessment_answers": {},
+    "reassessment_submitted": False,
 
-if "assessment_questions" not in st.session_state:
-    st.session_state.assessment_questions = []
+    "ai_questions": []
+}
 
-if "assessment_answers" not in st.session_state:
-    st.session_state.assessment_answers = {}
-
-if "assessment_index" not in st.session_state:
-    st.session_state.assessment_index = 0
-
-if "assessment_submitted" not in st.session_state:
-    st.session_state.assessment_submitted = False
-
-if "before_score" not in st.session_state:
-    st.session_state.before_score = None
-
-if "after_score" not in st.session_state:
-    st.session_state.after_score = None
-
-if "practice_questions" not in st.session_state:
-    st.session_state.practice_questions = []
-
-if "practice_answers" not in st.session_state:
-    st.session_state.practice_answers = {}
-
-if "reassessment_questions" not in st.session_state:
-    st.session_state.reassessment_questions = []
-
-if "reassessment_answers" not in st.session_state:
-    st.session_state.reassessment_answers = {}
-
-if "reassessment_submitted" not in st.session_state:
-    st.session_state.reassessment_submitted = False
-
-if "ai_questions" not in st.session_state:
-    st.session_state.ai_questions = []
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # =========================================================
@@ -648,28 +635,18 @@ if "ai_questions" not in st.session_state:
 
 L = T[st.session_state.lang]
 
-is_arabic = (
-    st.session_state.lang == "العربية"
-)
+is_arabic = st.session_state.lang == "العربية"
 
-direction = (
-    "rtl"
-    if is_arabic
-    else "ltr"
-)
-
-text_align = (
-    "right"
-    if is_arabic
-    else "left"
-)
+direction = "rtl" if is_arabic else "ltr"
+text_align = "right" if is_arabic else "left"
 
 
 # =========================================================
-# CSS
+# COLORS
 # =========================================================
 
 if st.session_state.theme == "Dark":
+
     COLORS = {
         "page": "#0b1120",
         "surface": "#111827",
@@ -678,20 +655,29 @@ if st.session_state.theme == "Dark":
         "text": "#f8fafc",
         "muted": "#cbd5e1",
         "border": "#334155",
+
         "accent": "#818cf8",
         "accent_2": "#c084fc",
         "accent_dark": "#3730a3",
+
         "hero_1": "#111827",
         "hero_2": "#1e293b",
         "hero_3": "#312e81",
+
         "button_text": "#ffffff",
         "input_bg": "#0f172a",
         "code_bg": "#020617",
+
         "sidebar_1": "#0b1020",
         "sidebar_2": "#171b3a",
-        "shadow": "rgba(0,0,0,.28)",
+        "sidebar_text": "#f8fafc",
+        "sidebar_muted": "#cbd5e1",
+
+        "shadow": "rgba(0,0,0,.28)"
     }
+
 else:
+
     COLORS = {
         "page": "#f5f7fb",
         "surface": "#ffffff",
@@ -700,19 +686,31 @@ else:
         "text": "#111827",
         "muted": "#475569",
         "border": "#dbe2ea",
+
         "accent": "#4f46e5",
         "accent_2": "#9333ea",
         "accent_dark": "#312e81",
+
         "hero_1": "#172554",
         "hero_2": "#312e81",
         "hero_3": "#581c87",
+
         "button_text": "#ffffff",
         "input_bg": "#ffffff",
         "code_bg": "#f1f5f9",
-        "sidebar_1": "#111827",
-        "sidebar_2": "#312e81",
-        "shadow": "rgba(15,23,42,.10)",
+
+        "sidebar_1": "#ffffff",
+        "sidebar_2": "#eef2ff",
+        "sidebar_text": "#111827",
+        "sidebar_muted": "#475569",
+
+        "shadow": "rgba(15,23,42,.10)"
     }
+
+
+# =========================================================
+# CSS
+# =========================================================
 
 st.markdown(
     f"""
@@ -732,7 +730,11 @@ st.markdown(
 
     .stApp {{
         background:
-            radial-gradient(circle at 90% 5%, rgba(99,102,241,.08), transparent 28%),
+            radial-gradient(
+                circle at 90% 5%,
+                rgba(99,102,241,.09),
+                transparent 28%
+            ),
             {COLORS["page"]} !important;
         color: {COLORS["text"]} !important;
     }}
@@ -748,19 +750,38 @@ st.markdown(
         padding-bottom: 4rem;
     }}
 
-    /* =========================
+    /* =====================================================
        SIDEBAR
-       ========================= */
+       ===================================================== */
 
     [data-testid="stSidebar"] {{
         background:
-            radial-gradient(circle at 20% 10%, rgba(129,140,248,.20), transparent 28%),
-            linear-gradient(180deg, {COLORS["sidebar_1"]} 0%, {COLORS["sidebar_2"]} 100%) !important;
-        border-right: 1px solid rgba(255,255,255,.10);
+            radial-gradient(
+                circle at 20% 10%,
+                rgba(129,140,248,.20),
+                transparent 28%
+            ),
+            linear-gradient(
+                180deg,
+                {COLORS["sidebar_1"]} 0%,
+                {COLORS["sidebar_2"]} 100%
+            ) !important;
+
+        border-right: 1px solid {COLORS["border"]};
+        direction: {direction};
     }}
 
     [data-testid="stSidebar"] * {{
-        color: #f8fafc !important;
+        color: {COLORS["sidebar_text"]} !important;
+    }}
+
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] small {{
+        color: {COLORS["sidebar_muted"]} !important;
+    }}
+
+    [data-testid="stSidebar"] hr {{
+        border-color: {COLORS["border"]} !important;
     }}
 
     [data-testid="stSidebar"] [data-testid="stRadio"] {{
@@ -773,13 +794,9 @@ st.markdown(
         padding: 5px 8px;
     }}
 
-    [data-testid="stSidebar"] hr {{
-        border-color: rgba(255,255,255,.14) !important;
-    }}
-
-    /* =========================
+    /* =====================================================
        GLOBAL TEXT
-       ========================= */
+       ===================================================== */
 
     .stMarkdown,
     .stText,
@@ -803,15 +820,29 @@ st.markdown(
         margin-bottom: 18px;
     }}
 
-    /* =========================
+    /* =====================================================
        HERO
-       ========================= */
+       ===================================================== */
 
     .hero {{
         background:
-            radial-gradient(circle at 85% 20%, rgba(129,140,248,.35), transparent 30%),
-            radial-gradient(circle at 15% 90%, rgba(192,132,252,.28), transparent 35%),
-            linear-gradient(135deg, {COLORS["hero_1"]} 0%, {COLORS["hero_2"]} 55%, {COLORS["hero_3"]} 100%);
+            radial-gradient(
+                circle at 85% 20%,
+                rgba(129,140,248,.35),
+                transparent 30%
+            ),
+            radial-gradient(
+                circle at 15% 90%,
+                rgba(192,132,252,.28),
+                transparent 35%
+            ),
+            linear-gradient(
+                135deg,
+                {COLORS["hero_1"]} 0%,
+                {COLORS["hero_2"]} 55%,
+                {COLORS["hero_3"]} 100%
+            );
+
         border-radius: 30px;
         padding: 52px;
         color: #ffffff !important;
@@ -852,7 +883,11 @@ st.markdown(
     }}
 
     .hero-title span {{
-        background: linear-gradient(90deg, #93c5fd, #e9d5ff);
+        background: linear-gradient(
+            90deg,
+            #93c5fd,
+            #e9d5ff
+        );
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }}
@@ -865,9 +900,9 @@ st.markdown(
         color: #ffffff !important;
     }}
 
-    /* =========================
+    /* =====================================================
        CARDS
-       ========================= */
+       ===================================================== */
 
     .stat-card,
     .journey-card,
@@ -913,7 +948,8 @@ st.markdown(
     .journey-card:hover,
     .stat-card:hover,
     .path-card:hover,
-    .ai-question-card:hover {{
+    .ai-question-card:hover,
+    .activity-card:hover {{
         transform: translateY(-3px);
         box-shadow: 0 18px 38px {COLORS["shadow"]};
     }}
@@ -954,7 +990,13 @@ st.markdown(
     }}
 
     .skill-card {{
-        background: linear-gradient(135deg, {COLORS["surface_alt"]}, {COLORS["surface_soft"]}) !important;
+        background:
+            linear-gradient(
+                135deg,
+                {COLORS["surface_alt"]},
+                {COLORS["surface_soft"]}
+            ) !important;
+
         border: 1px solid {COLORS["border"]} !important;
         border-radius: 22px;
         padding: 22px;
@@ -981,14 +1023,71 @@ st.markdown(
         color: {COLORS["accent"]} !important;
     }}
 
-    /* =========================
+    /* =====================================================
+       ENCOURAGEMENT
+       ===================================================== */
+
+    .encouragement-card {{
+        background:
+            linear-gradient(
+                135deg,
+                {COLORS["surface"]},
+                {COLORS["surface_soft"]}
+            ) !important;
+
+        border: 1px solid {COLORS["border"]} !important;
+        border-left: 5px solid {COLORS["accent"]} !important;
+        border-radius: 22px;
+        padding: 24px 26px;
+        margin: 20px 0;
+        box-shadow: 0 12px 30px {COLORS["shadow"]};
+    }}
+
+    .encouragement-card * {{
+        color: {COLORS["text"]} !important;
+    }}
+
+    .encouragement-title {{
+        font-size: 23px;
+        font-weight: 900;
+        margin-bottom: 7px;
+    }}
+
+    .encouragement-text {{
+        color: {COLORS["muted"]} !important;
+        font-size: 16px;
+        line-height: 1.65;
+    }}
+
+    .focus-card {{
+        background: {COLORS["surface_alt"]} !important;
+        border: 1px solid {COLORS["border"]} !important;
+        border-radius: 18px;
+        padding: 17px 20px;
+        margin-top: 12px;
+    }}
+
+    .focus-card * {{
+        color: {COLORS["text"]} !important;
+    }}
+
+    /* =====================================================
        AI
-       ========================= */
+       ===================================================== */
 
     .ai-header {{
         background:
-            radial-gradient(circle at 90% 15%, rgba(192,132,252,.25), transparent 30%),
-            linear-gradient(135deg, #1e3a8a, #312e81);
+            radial-gradient(
+                circle at 90% 15%,
+                rgba(192,132,252,.25),
+                transparent 30%
+            ),
+            linear-gradient(
+                135deg,
+                #1e3a8a,
+                #312e81
+            );
+
         border-radius: 24px;
         padding: 28px 30px;
         margin-bottom: 22px;
@@ -1014,7 +1113,11 @@ st.markdown(
 
     .ai-control-label {{
         color: #ffffff !important;
-        background: linear-gradient(135deg, #1e3a8a, #4f46e5);
+        background: linear-gradient(
+            135deg,
+            #1e3a8a,
+            #4f46e5
+        );
         padding: 9px 13px;
         border-radius: 10px;
         font-weight: 750;
@@ -1022,7 +1125,11 @@ st.markdown(
     }}
 
     .ai-generated-title {{
-        background: linear-gradient(135deg, #1e3a8a, #4f46e5);
+        background: linear-gradient(
+            135deg,
+            #1e3a8a,
+            #4f46e5
+        );
         color: #ffffff !important;
         border-radius: 14px;
         padding: 14px 18px;
@@ -1056,9 +1163,9 @@ st.markdown(
         white-space: pre-wrap;
     }}
 
-    /* =========================
-       INPUTS / RADIO / SELECTS
-       ========================= */
+    /* =====================================================
+       INPUTS
+       ===================================================== */
 
     [data-testid="stRadio"] {{
         background: {COLORS["surface"]} !important;
@@ -1092,25 +1199,40 @@ st.markdown(
         border-color: {COLORS["border"]} !important;
     }}
 
-    /* =========================
+    /* =====================================================
        BUTTONS
-       ========================= */
+       ===================================================== */
 
     div.stButton > button {{
         border-radius: 14px !important;
         min-height: 48px;
         font-weight: 800 !important;
+
         border: 1px solid rgba(129,140,248,.35) !important;
-        background: linear-gradient(135deg, {COLORS["accent"]}, {COLORS["accent_2"]}) !important;
-        color: {COLORS["button_text"]} !important;
-        box-shadow: 0 8px 20px rgba(79,70,229,.18);
-        transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+
+        background:
+            linear-gradient(
+                135deg,
+                {COLORS["accent"]},
+                {COLORS["accent_2"]}
+            ) !important;
+
+        color: #ffffff !important;
+
+        box-shadow:
+            0 8px 20px rgba(79,70,229,.18);
+
+        transition:
+            transform .16s ease,
+            box-shadow .16s ease,
+            filter .16s ease;
     }}
 
     div.stButton > button:hover {{
         transform: translateY(-2px);
-        filter: brightness(1.06);
-        box-shadow: 0 12px 26px rgba(79,70,229,.28);
+        filter: brightness(1.07);
+        box-shadow:
+            0 12px 26px rgba(79,70,229,.28);
     }}
 
     div.stButton > button:active {{
@@ -1123,9 +1245,9 @@ st.markdown(
         -webkit-text-fill-color: #ffffff !important;
     }}
 
-    /* =========================
+    /* =====================================================
        ALERTS / EXPANDERS / CODE
-       ========================= */
+       ===================================================== */
 
     [data-testid="stAlert"] {{
         border-radius: 14px !important;
@@ -1144,11 +1266,12 @@ st.markdown(
     code,
     pre {{
         background: {COLORS["code_bg"]} !important;
+        color: {COLORS["text"]} !important;
     }}
 
-    /* =========================
-       PROGRESS / METRICS
-       ========================= */
+    /* =====================================================
+       METRICS / PROGRESS
+       ===================================================== */
 
     [data-testid="stMetricValue"],
     [data-testid="stMetricLabel"] {{
@@ -1156,20 +1279,35 @@ st.markdown(
     }}
 
     [data-testid="stProgressBar"] > div > div {{
-        background: linear-gradient(90deg, {COLORS["accent"]}, {COLORS["accent_2"]}) !important;
+        background:
+            linear-gradient(
+                90deg,
+                {COLORS["accent"]},
+                {COLORS["accent_2"]}
+            ) !important;
     }}
 
-    /* =========================
-       ACTIVITY CARDS
-       ========================= */
+    /* =====================================================
+       ACTIVITIES
+       ===================================================== */
 
     .activity-card {{
-        background: linear-gradient(135deg, {COLORS["surface"]}, {COLORS["surface_soft"]}) !important;
+        background:
+            linear-gradient(
+                135deg,
+                {COLORS["surface"]},
+                {COLORS["surface_soft"]}
+            ) !important;
+
         border: 1px solid {COLORS["border"]} !important;
         border-radius: 24px;
         padding: 24px;
         min-height: 190px;
         box-shadow: 0 12px 30px {COLORS["shadow"]};
+
+        transition:
+            transform .18s ease,
+            box-shadow .18s ease;
     }}
 
     .activity-card * {{
@@ -1192,9 +1330,9 @@ st.markdown(
         margin-top: 8px;
     }}
 
-    /* =========================
+    /* =====================================================
        FOOTER
-       ========================= */
+       ===================================================== */
 
     .footer {{
         text-align: center;
@@ -1202,6 +1340,38 @@ st.markdown(
         padding: 30px;
         margin-top: 30px;
         border-top: 1px solid {COLORS["border"]};
+    }}
+
+    /* =====================================================
+       MOBILE
+       ===================================================== */
+
+    @media (max-width: 768px) {{
+
+        .block-container {{
+            padding-top: 1rem;
+        }}
+
+        .hero {{
+            padding: 32px 24px;
+            border-radius: 24px;
+        }}
+
+        .hero-title {{
+            font-size: 38px;
+        }}
+
+        .hero-desc {{
+            font-size: 16px;
+        }}
+
+        .section-title {{
+            font-size: 24px;
+        }}
+
+        .big-score {{
+            font-size: 48px;
+        }}
     }}
 
     </style>
@@ -1217,7 +1387,6 @@ st.markdown(
 model = None
 
 try:
-
     model_data = df[
         ["concept", "skill"]
     ].copy()
@@ -1230,7 +1399,6 @@ try:
     y = df["error_type"]
 
     if len(y.unique()) >= 2:
-
         model = DecisionTreeClassifier(
             max_depth=5,
             random_state=42
@@ -1242,13 +1410,9 @@ except Exception:
     model = None
 
 
-def predict_error(
-    concept,
-    skill
-):
+def predict_error(concept, skill):
 
     if model is None:
-
         return (
             "نمط الخطأ غير متاح"
             if is_arabic
@@ -1706,7 +1870,6 @@ QUESTIONS = [
 # =========================================================
 
 def get_question_text(q):
-
     return (
         q["question_ar"]
         if is_arabic
@@ -1715,7 +1878,6 @@ def get_question_text(q):
 
 
 def get_solution(q):
-
     return (
         q["solution_ar"]
         if is_arabic
@@ -1737,13 +1899,87 @@ def get_level(score):
     return L["beginner"]
 
 
+def get_encouragement(score):
+
+    if score == 100:
+        return (
+            L["perfect_title"],
+            L["perfect_desc"]
+        )
+
+    if score >= 90:
+        return (
+            L["excellent_title"],
+            L["excellent_desc"]
+        )
+
+    if score >= 75:
+        return (
+            L["good_title"],
+            L["good_desc"]
+        )
+
+    if score >= 50:
+        return (
+            L["developing_title"],
+            L["developing_desc"]
+        )
+
+    return (
+        L["beginner_title"],
+        L["beginner_desc"]
+    )
+
+
+def show_encouragement(score, focus_skill=None):
+
+    title, description = get_encouragement(score)
+
+    st.markdown(
+        f"""
+        <div class="encouragement-card">
+
+            <div class="encouragement-title">
+                {title}
+            </div>
+
+            <div class="encouragement-text">
+                {description}
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if focus_skill:
+
+        st.markdown(
+            f"""
+            <div class="focus-card">
+
+                <b>{L["focus_area"]}:</b>
+                {html.escape(str(focus_skill))}
+
+                <br>
+
+                <span style="
+                    color:{COLORS["muted"]} !important;
+                ">
+                    {L["practice_progress"]}
+                </span>
+
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
 def start_assessment():
 
-    st.session_state.assessment_questions = (
-        random.sample(
-            QUESTIONS,
-            15
-        )
+    st.session_state.assessment_questions = random.sample(
+        QUESTIONS,
+        15
     )
 
     st.session_state.assessment_answers = {}
@@ -1752,14 +1988,14 @@ def start_assessment():
 
     st.session_state.assessment_submitted = False
 
+    st.session_state.assessment_celebrated = False
+
     st.session_state.before_score = None
 
 
 def calculate_assessment_score():
 
-    questions = (
-        st.session_state.assessment_questions
-    )
+    questions = st.session_state.assessment_questions
 
     correct = 0
 
@@ -1771,16 +2007,45 @@ def calculate_assessment_score():
             )
             == q["answer"]
         ):
-
             correct += 1
 
     if not questions:
         return 0
 
     return round(
-        correct /
-        len(questions)
-        * 100
+        correct / len(questions) * 100
+    )
+
+
+def get_weakest_skill(questions, answers):
+
+    skill_scores = {}
+
+    for skill in sorted(
+        set(q["skill"] for q in questions)
+    ):
+
+        skill_questions = [
+            q for q in questions
+            if q["skill"] == skill
+        ]
+
+        correct = sum(
+            1
+            for q in skill_questions
+            if answers.get(q["id"]) == q["answer"]
+        )
+
+        skill_scores[skill] = round(
+            correct / len(skill_questions) * 100
+        )
+
+    if not skill_scores:
+        return None
+
+    return min(
+        skill_scores,
+        key=skill_scores.get
     )
 
 
@@ -1796,7 +2061,6 @@ def generate_ai_questions(
 ):
 
     if client is None:
-
         raise RuntimeError(
             "Gemini API is not configured."
         )
@@ -1829,9 +2093,8 @@ Requirements:
 8. Make the difficulty match the requested level.
 9. Do not include unsafe, inappropriate, or non-educational content.
 10. Return ONLY valid JSON.
-11. Do not use HTML tags, Markdown, or code formatting inside any field.
+11. Do not use HTML tags, Markdown, or code formatting.
 12. Return plain text only inside question, options, answer, and solution.
-13. Do not include <div>, <p>, <span>, <br>, or any other HTML tags.
 
 Return an array where every item has:
 
@@ -1873,7 +2136,7 @@ solution
 
     response = None
 
-    for attempt in range(3):
+    for attempt in range(4):
 
         try:
 
@@ -1890,21 +2153,13 @@ solution
 
         except Exception as e:
 
-            error_message = str(e)
-
-            if (
-                "503" in error_message
-                or "UNAVAILABLE" in error_message
-            ):
-
-                if attempt < 2:
-                    time.sleep(2)
-                    continue
+            if is_retryable_ai_error(e) and attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
 
             raise
 
     if response is None:
-
         raise RuntimeError(
             "Gemini did not return a response."
         )
@@ -1916,26 +2171,17 @@ solution
     )
 
     if parsed is None:
-
-        parsed = json.loads(
-            response.text
-        )
+        parsed = json.loads(response.text)
 
     valid_questions = []
 
     for item in parsed:
 
-        if not isinstance(
-            item,
-            dict
-        ):
+        if not isinstance(item, dict):
             continue
 
         question = str(
-            item.get(
-                "question",
-                ""
-            )
+            item.get("question", "")
         ).strip()
 
         options = item.get(
@@ -1944,30 +2190,16 @@ solution
         )
 
         answer = str(
-            item.get(
-                "answer",
-                ""
-            )
+            item.get("answer", "")
         ).strip()
 
         solution = str(
-            item.get(
-                "solution",
-                ""
-            )
+            item.get("solution", "")
         ).strip()
 
-        # -------------------------------------------------
-        # CLEAN ACCIDENTAL HTML FROM AI OUTPUT
-        # -------------------------------------------------
-
-        question = html.unescape(
-            question
-        )
-
-        solution = html.unescape(
-            solution
-        )
+        question = html.unescape(question)
+        solution = html.unescape(solution)
+        answer = html.unescape(answer)
 
         cleaned_options = []
 
@@ -1975,20 +2207,12 @@ solution
 
             for option in options:
 
-                option_text = html.unescape(
-                    str(option).strip()
-                )
-
                 cleaned_options.append(
-                    option_text
+                    html.unescape(
+                        str(option).strip()
+                    )
                 )
 
-        answer = html.unescape(
-            answer
-        )
-
-        # Remove common accidental HTML tags.
-        # This keeps the AI output as normal text.
         html_tags_to_remove = [
             "<div>",
             "</div>",
@@ -2003,14 +2227,20 @@ solution
 
         for tag in html_tags_to_remove:
 
+            replacement = (
+                "\n"
+                if "br" in tag
+                else ""
+            )
+
             question = question.replace(
                 tag,
-                "\n" if "br" in tag else ""
+                replacement
             )
 
             solution = solution.replace(
                 tag,
-                "\n" if "br" in tag else ""
+                replacement
             )
 
             answer = answer.replace(
@@ -2021,7 +2251,7 @@ solution
             cleaned_options = [
                 option.replace(
                     tag,
-                    "\n" if "br" in tag else ""
+                    replacement
                 )
                 for option in cleaned_options
             ]
@@ -2032,10 +2262,6 @@ solution
 
         if (
             question
-            and isinstance(
-                cleaned_options,
-                list
-            )
             and len(cleaned_options) == 4
             and answer
             and solution
@@ -2054,6 +2280,34 @@ solution
     return valid_questions
 
 
+def get_ai_error_message(error):
+
+    if client is None:
+        return L["ai_setup"]
+
+    if is_retryable_ai_error(error):
+        return L["ai_busy"]
+
+    message = str(error).lower()
+
+    if (
+        "api key" in message
+        or "permission" in message
+        or "authentication" in message
+        or "unauthorized" in message
+    ):
+        return L["ai_setup"]
+
+    if (
+        "connection" in message
+        or "timeout" in message
+        or "network" in message
+    ):
+        return L["ai_connection"]
+
+    return L["ai_error"]
+
+
 # =========================================================
 # SIDEBAR
 # =========================================================
@@ -2063,19 +2317,19 @@ with st.sidebar:
     st.markdown(
         """
         <div style="
-        font-size:34px;
-        font-weight:900;
-        margin-bottom:5px;
+            font-size:34px;
+            font-weight:900;
+            margin-bottom:5px;
         ">
-        🧠 NABD
+            🧠 NABD
         </div>
 
         <div style="
-        opacity:.65;
-        font-size:12px;
-        letter-spacing:1px;
+            opacity:.65;
+            font-size:12px;
+            letter-spacing:1px;
         ">
-        PERSONALIZED LEARNING
+            PERSONALIZED LEARNING
         </div>
         """,
         unsafe_allow_html=True
@@ -2097,20 +2351,17 @@ with st.sidebar:
         key="language_selector"
     )
 
-    if (
-        language_choice
-        != st.session_state.lang
-    ):
+    if language_choice != st.session_state.lang:
 
-        st.session_state.lang = (
-            language_choice
-        )
-
+        st.session_state.lang = language_choice
         st.rerun()
 
     theme_choice = st.radio(
         L["theme"],
-        ["🌙 " + L["dark"], "☀️ " + L["light"]],
+        [
+            "🌙 " + L["dark"],
+            "☀️ " + L["light"]
+        ],
         index=(
             0
             if st.session_state.theme == "Dark"
@@ -2126,78 +2377,44 @@ with st.sidebar:
     )
 
     if new_theme != st.session_state.theme:
+
         st.session_state.theme = new_theme
         st.rerun()
 
+    ai_status_text = (
+        "✓ " + L["ai_ready"]
+        if client is not None
+        else "⚠ " + L["ai_unavailable"]
+    )
+
     st.caption(
-        f"{L['ai_status']}: "
-        f"{'✓ ' + L['ai_ready'] if client is not None else '⚠ ' + L['ai_unavailable']}"
+        f"{L['ai_status']}: {ai_status_text}"
     )
 
     st.divider()
 
     pages = [
 
-        (
-            "🏠",
-            L["home"],
-            "Home"
-        ),
+        ("🏠", L["home"], "Home"),
 
-        (
-            "📝",
-            L["assessment"],
-            "Assessment"
-        ),
+        ("📝", L["assessment"], "Assessment"),
 
-        (
-            "📊",
-            L["snapshot"],
-            "Learning Snapshot"
-        ),
+        ("📊", L["snapshot"], "Learning Snapshot"),
 
-        (
-            "🔎",
-            L["errors"],
-            "Error Analysis"
-        ),
+        ("🔎", L["errors"], "Error Analysis"),
 
-        (
-            "🎯",
-            L["practice"],
-            "Smart Practice"
-        ),
+        ("🎯", L["practice"], "Smart Practice"),
 
-        (
-            "🤖",
-            L["ai_questions"],
-            "AI Questions"
-        ),
+        ("🤖", L["ai_questions"], "AI Questions"),
 
-        (
-            "🎉",
-            L["activities"],
-            "Activities"
-        ),
+        ("🎉", L["activities"], "Activities"),
 
-        (
-            "🛤️",
-            L["path"],
-            "Learning Path"
-        ),
+        ("🛤️", L["path"], "Learning Path"),
 
-        (
-            "🔄",
-            L["reassessment"],
-            "Reassessment"
-        )
+        ("🔄", L["reassessment"], "Reassessment")
     ]
 
-    for (
-        icon,
-        label,
-        page_key
-    ) in pages:
+    for icon, label, page_key in pages:
 
         if st.button(
             f"{icon}  {label}",
@@ -2205,10 +2422,7 @@ with st.sidebar:
             key=f"sidebar_{page_key}"
         ):
 
-            st.session_state.page = (
-                page_key
-            )
-
+            st.session_state.page = page_key
             st.rerun()
 
 
@@ -2222,18 +2436,18 @@ if st.session_state.page == "Home":
         f"""
         <div class="hero">
 
-        <div class="hero-small">
-        {L["hero_small"]}
-        </div>
+            <div class="hero-small">
+                {L["hero_small"]}
+            </div>
 
-        <div class="hero-title">
-        🧠 NABD<br>
-        <span>{L["hero_title2"]}</span>
-        </div>
+            <div class="hero-title">
+                🧠 NABD<br>
+                <span>{L["hero_title2"]}</span>
+            </div>
 
-        <div class="hero-desc">
-        {L["hero_desc"]}
-        </div>
+            <div class="hero-desc">
+                {L["hero_desc"]}
+            </div>
 
         </div>
         """,
@@ -2247,15 +2461,13 @@ if st.session_state.page == "Home":
         st.markdown(
             f"""
             <div class="stat-card">
+                <div class="stat-label">
+                    {L["questions"]}
+                </div>
 
-            <div class="stat-label">
-            {L["questions"]}
-            </div>
-
-            <div class="stat-value">
-            30
-            </div>
-
+                <div class="stat-value">
+                    30
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -2266,15 +2478,13 @@ if st.session_state.page == "Home":
         st.markdown(
             f"""
             <div class="stat-card">
+                <div class="stat-label">
+                    {L["skills"]}
+                </div>
 
-            <div class="stat-label">
-            {L["skills"]}
-            </div>
-
-            <div class="stat-value">
-            3
-            </div>
-
+                <div class="stat-value">
+                    3
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -2285,18 +2495,14 @@ if st.session_state.page == "Home":
         st.markdown(
             f"""
             <div class="stat-card">
+                <div class="stat-label">
+                    {L["model"]}
+                </div>
 
-            <div class="stat-label">
-            {L["model"]}
-            </div>
-
-            <div class="stat-value"
-            style="font-size:24px;">
-
-            {L["decision_tree"]}
-
-            </div>
-
+                <div class="stat-value"
+                     style="font-size:24px;">
+                    {L["decision_tree"]}
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -2305,7 +2511,7 @@ if st.session_state.page == "Home":
     st.markdown(
         f"""
         <div class="section-title">
-        {L["journey"]}
+            {L["journey"]}
         </div>
         """,
         unsafe_allow_html=True
@@ -2315,19 +2521,9 @@ if st.session_state.page == "Home":
 
     journey = [
 
-        (
-            "01",
-            "📝",
-            L["assess"],
-            L["assess_desc"]
-        ),
+        ("01", "📝", L["assess"], L["assess_desc"]),
 
-        (
-            "02",
-            "🔎",
-            L["analyze"],
-            L["analyze_desc"]
-        ),
+        ("02", "🔎", L["analyze"], L["analyze_desc"]),
 
         (
             "03",
@@ -2344,10 +2540,7 @@ if st.session_state.page == "Home":
         )
     ]
 
-    for col, item in zip(
-        cols,
-        journey
-    ):
+    for col, item in zip(cols, journey):
 
         number, icon, title, desc = item
 
@@ -2357,24 +2550,24 @@ if st.session_state.page == "Home":
                 f"""
                 <div class="journey-card">
 
-                <div class="journey-number">
-                {number}
-                </div>
+                    <div class="journey-number">
+                        {number}
+                    </div>
 
-                <div style="
-                font-size:30px;
-                margin-top:8px;
-                ">
-                {icon}
-                </div>
+                    <div style="
+                        font-size:30px;
+                        margin-top:8px;
+                    ">
+                        {icon}
+                    </div>
 
-                <div class="journey-title">
-                {title}
-                </div>
+                    <div class="journey-title">
+                        {title}
+                    </div>
 
-                <div class="journey-desc">
-                {desc}
-                </div>
+                    <div class="journey-desc">
+                        {desc}
+                    </div>
 
                 </div>
                 """,
@@ -2391,9 +2584,7 @@ if st.session_state.page == "Home":
 
         start_assessment()
 
-        st.session_state.page = (
-            "Assessment"
-        )
+        st.session_state.page = "Assessment"
 
         st.rerun()
 
@@ -2404,36 +2595,24 @@ if st.session_state.page == "Home":
 
 elif st.session_state.page == "Assessment":
 
-    st.title(
-        f"📝 {L['placement']}"
-    )
+    st.title(f"📝 {L['placement']}")
 
-    st.write(
-        L["placement_desc"]
-    )
+    st.write(L["placement_desc"])
 
     if not st.session_state.assessment_questions:
-
         start_assessment()
 
     if not st.session_state.assessment_submitted:
 
-        questions = (
-            st.session_state.assessment_questions
-        )
+        questions = st.session_state.assessment_questions
 
-        index = (
-            st.session_state.assessment_index
-        )
+        index = st.session_state.assessment_index
 
         current = questions[index]
 
         total = len(questions)
 
-        progress = (
-            (index + 1)
-            / total
-        )
+        progress = (index + 1) / total
 
         st.progress(progress)
 
@@ -2448,27 +2627,19 @@ elif st.session_state.page == "Assessment":
             f"""
             <div class="question-card">
 
-            <div style="
-            color:{COLORS["accent"]} !important;
-            font-weight:800;
-            font-size:13px;
-            ">
+                <div style="
+                    color:{COLORS["accent"]} !important;
+                    font-weight:800;
+                    font-size:13px;
+                ">
+                    {html.escape(str(current["skill"]))}
+                    •
+                    {html.escape(str(current["difficulty"]))}
+                </div>
 
-            {html.escape(
-                str(current["skill"])
-            )}
-            •
-            {html.escape(
-                str(current["difficulty"])
-            )}
-
-            </div>
-
-            <h2>
-            {html.escape(
-                get_question_text(current)
-            )}
-            </h2>
+                <h2>
+                    {html.escape(get_question_text(current))}
+                </h2>
 
             </div>
             """,
@@ -2487,11 +2658,8 @@ elif st.session_state.page == "Assessment":
             L["choose"],
             current["options"],
             index=(
-                current["options"].index(
-                    previous_answer
-                )
-                if previous_answer
-                in current["options"]
+                current["options"].index(previous_answer)
+                if previous_answer in current["options"]
                 else None
             ),
             key=f"question_{current['id']}"
@@ -2514,7 +2682,6 @@ elif st.session_state.page == "Assessment":
                 ):
 
                     st.session_state.assessment_index -= 1
-
                     st.rerun()
 
         with col2:
@@ -2528,7 +2695,6 @@ elif st.session_state.page == "Assessment":
                 ):
 
                     st.session_state.assessment_index += 1
-
                     st.rerun()
 
             else:
@@ -2539,50 +2705,59 @@ elif st.session_state.page == "Assessment":
                     key="assessment_finish"
                 ):
 
-                    score = (
-                        calculate_assessment_score()
-                    )
+                    score = calculate_assessment_score()
 
                     st.session_state.before_score = score
-
                     st.session_state.assessment_submitted = True
 
                     st.rerun()
 
     else:
 
-        score = (
-            st.session_state.before_score
-        )
+        score = st.session_state.before_score
 
         level = get_level(score)
+
+        weakest_skill = get_weakest_skill(
+            st.session_state.assessment_questions,
+            st.session_state.assessment_answers
+        )
 
         st.markdown(
             f"""
             <div class="hero">
 
-            <div class="hero-small">
-            NABD ASSESSMENT RESULT
-            </div>
+                <div class="hero-small">
+                    NABD ASSESSMENT RESULT
+                </div>
 
-            <div class="big-score"
-            style="color:white !important;">
-            {score}%
-            </div>
+                <div class="big-score"
+                     style="color:white !important;">
+                    {score}%
+                </div>
 
-            <div style="
-            font-size:24px;
-            font-weight:800;
-            margin-top:5px;
-            ">
-
-            {L["level"]}: {level}
-
-            </div>
+                <div style="
+                    font-size:24px;
+                    font-weight:800;
+                    margin-top:5px;
+                ">
+                    {L["level"]}: {level}
+                </div>
 
             </div>
             """,
             unsafe_allow_html=True
+        )
+
+        if score >= 90 and not st.session_state.assessment_celebrated:
+
+            st.balloons()
+
+            st.session_state.assessment_celebrated = True
+
+        show_encouragement(
+            score,
+            weakest_skill if score < 90 else None
         )
 
         if st.button(
@@ -2591,10 +2766,7 @@ elif st.session_state.page == "Assessment":
             key="assessment_snapshot"
         ):
 
-            st.session_state.page = (
-                "Learning Snapshot"
-            )
-
+            st.session_state.page = "Learning Snapshot"
             st.rerun()
 
 
@@ -2604,40 +2776,23 @@ elif st.session_state.page == "Assessment":
 
 elif st.session_state.page == "Learning Snapshot":
 
-    st.title(
-        f"📊 {L['snapshot_title']}"
-    )
+    st.title(f"📊 {L['snapshot_title']}")
 
-    if (
-        st.session_state.before_score
-        is None
-    ):
+    if st.session_state.before_score is None:
 
-        st.warning(
-            L["complete_first"]
-        )
-
+        st.warning(L["complete_first"])
         st.stop()
 
-    score = (
-        st.session_state.before_score
-    )
+    score = st.session_state.before_score
 
-    questions = (
-        st.session_state.assessment_questions
-    )
+    questions = st.session_state.assessment_questions
 
-    answers = (
-        st.session_state.assessment_answers
-    )
+    answers = st.session_state.assessment_answers
 
     skill_scores = {}
 
     for skill in sorted(
-        set(
-            q["skill"]
-            for q in questions
-        )
+        set(q["skill"] for q in questions)
     ):
 
         skill_questions = [
@@ -2649,20 +2804,16 @@ elif st.session_state.page == "Learning Snapshot":
         correct = sum(
             1
             for q in skill_questions
-            if answers.get(q["id"])
-            == q["answer"]
+            if answers.get(q["id"]) == q["answer"]
         )
 
         skill_scores[skill] = round(
-            correct
-            / len(skill_questions)
-            * 100
+            correct / len(skill_questions) * 100
         )
 
     weak_skills = [
         skill
-        for skill, value
-        in skill_scores.items()
+        for skill, value in skill_scores.items()
         if value < 70
     ]
 
@@ -2674,13 +2825,13 @@ elif st.session_state.page == "Learning Snapshot":
             f"""
             <div class="stat-card">
 
-            <div class="stat-label">
-            {L["overall"]}
-            </div>
+                <div class="stat-label">
+                    {L["overall"]}
+                </div>
 
-            <div class="stat-value">
-            {score}%
-            </div>
+                <div class="stat-value">
+                    {score}%
+                </div>
 
             </div>
             """,
@@ -2693,16 +2844,14 @@ elif st.session_state.page == "Learning Snapshot":
             f"""
             <div class="stat-card">
 
-            <div class="stat-label">
-            {L["level"]}
-            </div>
+                <div class="stat-label">
+                    {L["level"]}
+                </div>
 
-            <div class="stat-value"
-            style="font-size:25px;">
-
-            {get_level(score)}
-
-            </div>
+                <div class="stat-value"
+                     style="font-size:25px;">
+                    {get_level(score)}
+                </div>
 
             </div>
             """,
@@ -2715,13 +2864,13 @@ elif st.session_state.page == "Learning Snapshot":
             f"""
             <div class="stat-card">
 
-            <div class="stat-label">
-            {L["assessed_skills"]}
-            </div>
+                <div class="stat-label">
+                    {L["assessed_skills"]}
+                </div>
 
-            <div class="stat-value">
-            {len(skill_scores)}
-            </div>
+                <div class="stat-value">
+                    {len(skill_scores)}
+                </div>
 
             </div>
             """,
@@ -2731,7 +2880,7 @@ elif st.session_state.page == "Learning Snapshot":
     st.markdown(
         f"""
         <div class="section-title">
-        {L["skill_performance"]}
+            {L["skill_performance"]}
         </div>
         """,
         unsafe_allow_html=True
@@ -2743,36 +2892,34 @@ elif st.session_state.page == "Learning Snapshot":
             f"""
             <div class="skill-card">
 
-            <div style="
-            display:flex;
-            justify-content:space-between;
-            font-weight:800;
-            color:{COLORS["text"]} !important;
-            ">
+                <div style="
+                    display:flex;
+                    justify-content:space-between;
+                    font-weight:800;
+                    color:{COLORS["text"]} !important;
+                ">
 
-            <span>
-            {html.escape(str(skill))}
-            </span>
+                    <span>
+                        {html.escape(str(skill))}
+                    </span>
 
-            <span>
-            {value}%
-            </span>
+                    <span>
+                        {value}%
+                    </span>
 
-            </div>
+                </div>
 
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        st.progress(
-            value / 100
-        )
+        st.progress(value / 100)
 
     st.markdown(
         f"""
         <div class="section-title">
-        {L["practice_needed"]}
+            {L["practice_needed"]}
         </div>
         """,
         unsafe_allow_html=True
@@ -2795,7 +2942,7 @@ elif st.session_state.page == "Learning Snapshot":
     st.markdown(
         f"""
         <div class="section-title">
-        📈 {L["journey"]}
+            📈 {L["journey"]}
         </div>
         """,
         unsafe_allow_html=True
@@ -2804,14 +2951,12 @@ elif st.session_state.page == "Learning Snapshot":
     c1, c2, c3 = st.columns(3)
 
     with c1:
-
         st.metric(
             L["before"],
             f"{score}%"
         )
 
     with c2:
-
         st.metric(
             L["practice_title"],
             "→"
@@ -2819,10 +2964,7 @@ elif st.session_state.page == "Learning Snapshot":
 
     with c3:
 
-        if (
-            st.session_state.after_score
-            is None
-        ):
+        if st.session_state.after_score is None:
 
             st.metric(
                 L["after"],
@@ -2843,31 +2985,21 @@ elif st.session_state.page == "Learning Snapshot":
 
 elif st.session_state.page == "Error Analysis":
 
-    st.title(
-        f"🔎 {L['error_title']}"
-    )
+    st.title(f"🔎 {L['error_title']}")
 
     if not st.session_state.assessment_submitted:
 
-        st.warning(
-            L["complete_first"]
-        )
-
+        st.warning(L["complete_first"])
         st.stop()
 
-    questions = (
-        st.session_state.assessment_questions
-    )
+    questions = st.session_state.assessment_questions
 
-    answers = (
-        st.session_state.assessment_answers
-    )
+    answers = st.session_state.assessment_answers
 
     wrong_questions = [
         q
         for q in questions
-        if answers.get(q["id"])
-        != q["answer"]
+        if answers.get(q["id"]) != q["answer"]
     ]
 
     if not wrong_questions:
@@ -2879,8 +3011,7 @@ elif st.session_state.page == "Error Analysis":
     else:
 
         st.write(
-            f"{len(wrong_questions)} "
-            f"{L['wrong']}"
+            f"{len(wrong_questions)} {L['wrong']}"
         )
 
         for q in wrong_questions:
@@ -2894,25 +3025,19 @@ elif st.session_state.page == "Error Analysis":
                 f"""
                 <div class="question-card">
 
-                <h3>
-                {html.escape(
-                    get_question_text(q)
-                )}
-                </h3>
+                    <h3>
+                        {html.escape(get_question_text(q))}
+                    </h3>
 
-                <p>
-                <b>{L["your_answer"]}:</b>
-                {html.escape(
-                    str(selected)
-                )}
-                </p>
+                    <p>
+                        <b>{L["your_answer"]}:</b>
+                        {html.escape(str(selected))}
+                    </p>
 
-                <p>
-                <b>{L["correct_answer"]}:</b>
-                {html.escape(
-                    str(q["answer"])
-                )}
-                </p>
+                    <p>
+                        <b>{L["correct_answer"]}:</b>
+                        {html.escape(str(q["answer"]))}
+                    </p>
 
                 </div>
                 """,
@@ -2944,15 +3069,10 @@ elif st.session_state.page == "Error Analysis":
 
 elif st.session_state.page == "Smart Practice":
 
-    st.title(
-        f"🎯 {L['smart_title']}"
-    )
+    st.title(f"🎯 {L['smart_title']}")
 
     skills = sorted(
-        set(
-            q["skill"]
-            for q in QUESTIONS
-        )
+        set(q["skill"] for q in QUESTIONS)
     )
 
     selected_skill = st.selectbox(
@@ -2973,103 +3093,140 @@ elif st.session_state.page == "Smart Practice":
             if q["skill"] == selected_skill
         ]
 
-        st.session_state.practice_questions = (
-            random.sample(
-                pool,
-                min(
-                    6,
-                    len(pool)
-                )
-            )
+        st.session_state.practice_questions = random.sample(
+            pool,
+            min(6, len(pool))
         )
 
         st.session_state.practice_answers = {}
+
+        st.session_state.practice_submitted = False
+
+        st.session_state.practice_score = None
 
         st.rerun()
 
     if st.session_state.practice_questions:
 
-        questions = (
-            st.session_state.practice_questions
-        )
+        questions = st.session_state.practice_questions
 
-        for i, q in enumerate(
-            questions
-        ):
+        if not st.session_state.practice_submitted:
+
+            for i, q in enumerate(questions):
+
+                st.markdown(
+                    f"""
+                    <div class="question-card">
+
+                        <div style="
+                            color:{COLORS["accent"]} !important;
+                            font-weight:800;
+                        ">
+                            {L["question"]} {i + 1}
+                        </div>
+
+                        <h3>
+                            {html.escape(get_question_text(q))}
+                        </h3>
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                previous = (
+                    st.session_state.practice_answers.get(
+                        q["id"]
+                    )
+                )
+
+                answer = st.radio(
+                    L["choose"],
+                    q["options"],
+                    index=(
+                        q["options"].index(previous)
+                        if previous in q["options"]
+                        else None
+                    ),
+                    key=f"practice_answer_{q['id']}"
+                )
+
+                st.session_state.practice_answers[
+                    q["id"]
+                ] = answer
+
+                with st.expander(
+                    f"💡 {L['learning_point']}"
+                ):
+
+                    st.code(
+                        get_solution(q),
+                        language="text"
+                    )
+
+            if st.button(
+                f"✓ {L['finish_practice']}",
+                use_container_width=True,
+                key="finish_practice_button"
+            ):
+
+                correct = sum(
+                    1
+                    for q in questions
+                    if (
+                        st.session_state.practice_answers.get(
+                            q["id"]
+                        )
+                        == q["answer"]
+                    )
+                )
+
+                score = round(
+                    correct / len(questions) * 100
+                )
+
+                st.session_state.practice_score = score
+
+                st.session_state.practice_submitted = True
+
+                st.rerun()
+
+        else:
+
+            score = st.session_state.practice_score
+
+            weakest_skill = (
+                selected_skill
+                if score < 80
+                else None
+            )
 
             st.markdown(
                 f"""
-                <div class="question-card">
+                <div class="hero">
 
-                <div style="
-                color:{COLORS["accent"]} !important;
-                font-weight:800;
-                ">
-                {L["question"]} {i + 1}
-                </div>
+                    <div class="hero-small">
+                        {L["practice_complete"]}
+                    </div>
 
-                <h3>
-                {html.escape(
-                    get_question_text(q)
-                )}
-                </h3>
+                    <div class="big-score"
+                         style="color:white !important;">
+                        {score}%
+                    </div>
 
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-            answer = st.radio(
-                L["choose"],
-                q["options"],
-                index=None,
-                key=f"practice_answer_{q['id']}"
-            )
-
-            st.session_state.practice_answers[
-                q["id"]
-            ] = answer
-
-            with st.expander(
-                f"💡 {L['learning_point']}"
-            ):
-
-                st.code(
-                    get_solution(q),
-                    language="text"
-                )
-
-        if st.button(
-            f"✓ {L['finish_practice']}",
-            use_container_width=True,
-            key="finish_practice_button"
-        ):
-
-            correct = sum(
-                1
-                for q in questions
-                if (
-                    st.session_state.practice_answers.get(
-                        q["id"]
-                    )
-                    == q["answer"]
-                )
-            )
-
-            score = round(
-                correct
-                / len(questions)
-                * 100
-            )
-
-            st.success(
-                f"{L['practice_complete']} "
-                f"{score}%"
+            show_encouragement(
+                score,
+                weakest_skill
             )
 
             if score >= 80:
 
-                st.info(
+                st.success(
                     f"🚀 {L['ready_reassess']}"
                 )
 
@@ -3078,6 +3235,31 @@ elif st.session_state.page == "Smart Practice":
                 st.warning(
                     f"🎯 {L['more_practice']}"
                 )
+
+            if st.button(
+                f"🔁 {L['generate']}",
+                use_container_width=True,
+                key="practice_again"
+            ):
+
+                pool = [
+                    q
+                    for q in QUESTIONS
+                    if q["skill"] == selected_skill
+                ]
+
+                st.session_state.practice_questions = random.sample(
+                    pool,
+                    min(6, len(pool))
+                )
+
+                st.session_state.practice_answers = {}
+
+                st.session_state.practice_submitted = False
+
+                st.session_state.practice_score = None
+
+                st.rerun()
 
 
 # =========================================================
@@ -3090,13 +3272,13 @@ elif st.session_state.page == "AI Questions":
         f"""
         <div class="ai-header">
 
-        <h1>
-        🤖 {L["ai_title"]}
-        </h1>
+            <h1>
+                🤖 {L["ai_title"]}
+            </h1>
 
-        <p>
-        {L["ai_desc"]}
-        </p>
+            <p>
+                {L["ai_desc"]}
+            </p>
 
         </div>
         """,
@@ -3104,10 +3286,7 @@ elif st.session_state.page == "AI Questions":
     )
 
     skills = sorted(
-        set(
-            q["skill"]
-            for q in QUESTIONS
-        )
+        set(q["skill"] for q in QUESTIONS)
     )
 
     difficulties = [
@@ -3123,7 +3302,7 @@ elif st.session_state.page == "AI Questions":
         st.markdown(
             f"""
             <div class="ai-control-label">
-            {L["ai_skill"]}
+                {L["ai_skill"]}
             </div>
             """,
             unsafe_allow_html=True
@@ -3141,7 +3320,7 @@ elif st.session_state.page == "AI Questions":
         st.markdown(
             f"""
             <div class="ai-control-label">
-            {L["ai_difficulty"]}
+                {L["ai_difficulty"]}
             </div>
             """,
             unsafe_allow_html=True
@@ -3159,7 +3338,7 @@ elif st.session_state.page == "AI Questions":
         st.markdown(
             f"""
             <div class="ai-control-label">
-            {L["ai_count"]}
+                {L["ai_count"]}
             </div>
             """,
             unsafe_allow_html=True
@@ -3179,59 +3358,63 @@ elif st.session_state.page == "AI Questions":
         key="ai_generate_button"
     ):
 
-        language = (
-            "Arabic"
-            if is_arabic
-            else "English"
-        )
+        if client is None:
 
-        with st.spinner(
-            "Generating questions..."
-            if not is_arabic
-            else "جاري إنشاء الأسئلة..."
-        ):
+            st.error(
+                L["ai_setup"]
+            )
 
-            try:
+        else:
 
-                generated_questions = (
-                    generate_ai_questions(
+            language = (
+                "Arabic"
+                if is_arabic
+                else "English"
+            )
+
+            spinner_text = (
+                "جاري إنشاء الأسئلة..."
+                if is_arabic
+                else "Generating questions..."
+            )
+
+            with st.spinner(spinner_text):
+
+                try:
+
+                    generated_questions = generate_ai_questions(
                         selected_skill,
                         selected_difficulty,
                         question_count,
                         language
                     )
-                )
 
-                if not generated_questions:
+                    if not generated_questions:
+
+                        st.error(
+                            L["ai_error"]
+                        )
+
+                    else:
+
+                        st.session_state.ai_questions = (
+                            generated_questions
+                        )
+
+                        st.rerun()
+
+                except Exception as e:
 
                     st.error(
-                        L["ai_error"]
+                        get_ai_error_message(e)
                     )
-
-                else:
-
-                    st.session_state.ai_questions = (
-                        generated_questions
-                    )
-
-                    st.rerun()
-
-            except Exception as e:
-
-                st.error(
-                    L["ai_error"]
-                )
-
-                st.code(
-                    str(e)
-                )
 
     if st.session_state.ai_questions:
 
         st.markdown(
             f"""
             <div class="ai-generated-title">
-            🤖 {L["ai_generated"]}
+                🤖 {L["ai_generated"]}
             </div>
             """,
             unsafe_allow_html=True
@@ -3241,23 +3424,14 @@ elif st.session_state.page == "AI Questions":
             st.session_state.ai_questions
         ):
 
-            # -------------------------------------------------
-            # SAFELY DISPLAY AI QUESTION AS TEXT
-            # -------------------------------------------------
-
             question_text = str(
-                q.get(
-                    "question",
-                    ""
-                )
+                q.get("question", "")
             ).strip()
 
             question_text = html.unescape(
                 question_text
             )
 
-            # Remove accidental HTML tags
-            # if the AI somehow returns them.
             question_text = (
                 question_text
                 .replace("<div>", "")
@@ -3284,11 +3458,11 @@ elif st.session_state.page == "AI Questions":
                 <div class="ai-question-card">
 
                     <div class="ai-question-number">
-                    {question_number} {i + 1}
+                        {question_number} {i + 1}
                     </div>
 
                     <div class="question-text">
-                    {question_text}
+                        {question_text}
                     </div>
 
                 </div>
@@ -3308,17 +3482,13 @@ elif st.session_state.page == "AI Questions":
                 if answer == q["answer"]:
 
                     st.success(
-                        "✓ Correct!"
-                        if not is_arabic
-                        else "✓ إجابة صحيحة!"
+                        L["correct_feedback"]
                     )
 
                 else:
 
                     st.error(
-                        "✗ Incorrect"
-                        if not is_arabic
-                        else "✗ إجابة غير صحيحة"
+                        L["incorrect_feedback"]
                     )
 
                     st.write(
@@ -3345,13 +3515,19 @@ elif st.session_state.page == "Activities":
     st.markdown(
         f"""
         <div class="hero">
-            <div class="hero-small">NABD • LEARN • PLAY • GROW</div>
+
+            <div class="hero-small">
+                NABD • LEARN • PLAY • GROW
+            </div>
+
             <div class="hero-title">
                 🎉 {L["activities_title"]}
             </div>
+
             <div class="hero-desc">
                 {L["activities_desc"]}
             </div>
+
         </div>
         """,
         unsafe_allow_html=True
@@ -3360,24 +3536,27 @@ elif st.session_state.page == "Activities":
     activity_cols = st.columns(3)
 
     activities = [
+
         (
             activity_cols[0],
             "⚡",
             L["challenge"],
             L["challenge_desc"]
         ),
+
         (
             activity_cols[1],
             "🧠",
             L["smart_title"],
             L["practice_desc"]
         ),
+
         (
             activity_cols[2],
             "🤖",
             L["ai_title"],
             L["ai_desc"]
-        ),
+        )
     ]
 
     for col, icon, title, desc in activities:
@@ -3387,9 +3566,19 @@ elif st.session_state.page == "Activities":
             st.markdown(
                 f"""
                 <div class="activity-card">
-                    <div class="activity-icon">{icon}</div>
-                    <div class="activity-title">{title}</div>
-                    <div class="activity-desc">{desc}</div>
+
+                    <div class="activity-icon">
+                        {icon}
+                    </div>
+
+                    <div class="activity-title">
+                        {title}
+                    </div>
+
+                    <div class="activity-desc">
+                        {desc}
+                    </div>
+
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -3429,15 +3618,14 @@ elif st.session_state.page == "Activities":
 
         if not st.session_state.challenge_submitted:
 
-            questions = (
-                st.session_state.challenge_questions
-            )
+            questions = st.session_state.challenge_questions
 
             for i, q in enumerate(questions):
 
                 st.markdown(
                     f"""
                     <div class="question-card">
+
                         <div style="
                             color:{COLORS["accent"]} !important;
                             font-weight:800;
@@ -3445,18 +3633,30 @@ elif st.session_state.page == "Activities":
                         ">
                             {L["question"]} {i + 1}
                         </div>
+
                         <h3>
                             {html.escape(get_question_text(q))}
                         </h3>
+
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
 
+                previous = (
+                    st.session_state.challenge_answers.get(
+                        q["id"]
+                    )
+                )
+
                 answer = st.radio(
                     L["choose"],
                     q["options"],
-                    index=None,
+                    index=(
+                        q["options"].index(previous)
+                        if previous in q["options"]
+                        else None
+                    ),
                     key=f"challenge_answer_{q['id']}"
                 )
 
@@ -3474,7 +3674,9 @@ elif st.session_state.page == "Activities":
                     1
                     for q in questions
                     if (
-                        st.session_state.challenge_answers.get(q["id"])
+                        st.session_state.challenge_answers.get(
+                            q["id"]
+                        )
                         == q["answer"]
                     )
                 )
@@ -3489,13 +3691,12 @@ elif st.session_state.page == "Activities":
 
         else:
 
-            score = (
-                st.session_state.challenge_score
-            )
+            score = st.session_state.challenge_score
 
             st.markdown(
                 f"""
                 <div class="hero">
+
                     <div class="hero-small">
                         {L["challenge_complete"]}
                     </div>
@@ -3514,10 +3715,16 @@ elif st.session_state.page == "Activities":
                     ">
                         {L["challenge_score"]}
                     </div>
+
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
+            if score >= 90:
+                st.balloons()
+
+            show_encouragement(score)
 
             if st.button(
                 f"🔁 {L['challenge_again']}",
@@ -3545,13 +3752,9 @@ elif st.session_state.page == "Activities":
 
 elif st.session_state.page == "Learning Path":
 
-    st.title(
-        f"🛤️ {L['path_title']}"
-    )
+    st.title(f"🛤️ {L['path_title']}")
 
-    st.write(
-        L["path_desc"]
-    )
+    st.write(L["path_desc"])
 
     path_items = [
 
@@ -3584,51 +3787,46 @@ elif st.session_state.page == "Learning Path":
         )
     ]
 
-    for (
-        number,
-        icon,
-        title,
-        desc
-    ) in path_items:
+    for number, icon, title, desc in path_items:
 
         st.markdown(
             f"""
             <div class="path-card">
 
-            <div style="
-            display:flex;
-            align-items:center;
-            gap:20px;
-            ">
+                <div style="
+                    display:flex;
+                    align-items:center;
+                    gap:20px;
+                ">
 
-            <div style="
-            font-size:32px;
-            font-weight:900;
-            color:{COLORS["accent"]} !important;
-            ">
-            {number}
-            </div>
+                    <div style="
+                        font-size:32px;
+                        font-weight:900;
+                        color:{COLORS["accent"]} !important;
+                    ">
+                        {number}
+                    </div>
 
-            <div>
+                    <div>
 
-            <div style="
-            font-size:25px;
-            font-weight:850;
-            color:{COLORS["text"]} !important;
-            ">
-            {icon} {title}
-            </div>
+                        <div style="
+                            font-size:25px;
+                            font-weight:850;
+                            color:{COLORS["text"]} !important;
+                        ">
+                            {icon} {title}
+                        </div>
 
-            <div style="
-            color:{COLORS["muted"]} !important;
-            margin-top:5px;
-            ">
-            {desc}
-            </div>
+                        <div style="
+                            color:{COLORS["muted"]} !important;
+                            margin-top:5px;
+                        ">
+                            {desc}
+                        </div>
 
-            </div>
+                    </div>
 
-            </div>
+                </div>
 
             </div>
             """,
@@ -3648,10 +3846,7 @@ elif st.session_state.page == "Reassessment":
         f"🔄 {L['reassessment_title']}"
     )
 
-    if (
-        st.session_state.before_score
-        is None
-    ):
+    if st.session_state.before_score is None:
 
         st.warning(
             L["complete_first"]
@@ -3665,56 +3860,57 @@ elif st.session_state.page == "Reassessment":
 
     if not st.session_state.reassessment_questions:
 
-        st.session_state.reassessment_questions = (
-            random.sample(
-                QUESTIONS,
-                10
-            )
+        st.session_state.reassessment_questions = random.sample(
+            QUESTIONS,
+            10
         )
 
         st.session_state.reassessment_answers = {}
 
         st.session_state.reassessment_submitted = False
 
-    if not st.session_state.get(
-        "reassessment_submitted",
-        False
-    ):
+    if not st.session_state.reassessment_submitted:
 
         questions = (
             st.session_state.reassessment_questions
         )
 
-        for i, q in enumerate(
-            questions
-        ):
+        for i, q in enumerate(questions):
 
             st.markdown(
                 f"""
                 <div class="question-card">
 
-                <div style="
-                color:{COLORS["accent"]} !important;
-                font-weight:800;
-                ">
-                {L["question"]} {i + 1}
-                </div>
+                    <div style="
+                        color:{COLORS["accent"]} !important;
+                        font-weight:800;
+                    ">
+                        {L["question"]} {i + 1}
+                    </div>
 
-                <h3>
-                {html.escape(
-                    get_question_text(q)
-                )}
-                </h3>
+                    <h3>
+                        {html.escape(get_question_text(q))}
+                    </h3>
 
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
+            previous = (
+                st.session_state.reassessment_answers.get(
+                    q["id"]
+                )
+            )
+
             answer = st.radio(
                 L["choose"],
                 q["options"],
-                index=None,
+                index=(
+                    q["options"].index(previous)
+                    if previous in q["options"]
+                    else None
+                ),
                 key=f"reassessment_{q['id']}"
             )
 
@@ -3740,9 +3936,7 @@ elif st.session_state.page == "Reassessment":
             )
 
             score = round(
-                correct
-                / len(questions)
-                * 100
+                correct / len(questions) * 100
             )
 
             st.session_state.after_score = score
@@ -3753,13 +3947,9 @@ elif st.session_state.page == "Reassessment":
 
     else:
 
-        before = (
-            st.session_state.before_score
-        )
+        before = st.session_state.before_score
 
-        after = (
-            st.session_state.after_score
-        )
+        after = st.session_state.after_score
 
         change = after - before
 
@@ -3767,24 +3957,24 @@ elif st.session_state.page == "Reassessment":
             f"""
             <div class="hero">
 
-            <div class="hero-small">
-            {L["reassessment_title"].upper()}
-            </div>
+                <div class="hero-small">
+                    {L["reassessment_title"].upper()}
+                </div>
 
-            <div style="
-            font-size:54px;
-            font-weight:900;
-            margin-top:10px;
-            ">
-            {after}%
-            </div>
+                <div style="
+                    font-size:54px;
+                    font-weight:900;
+                    margin-top:10px;
+                ">
+                    {after}%
+                </div>
 
-            <div style="
-            font-size:20px;
-            opacity:.8;
-            ">
-            {L["after"]}
-            </div>
+                <div style="
+                    font-size:20px;
+                    opacity:.8;
+                ">
+                    {L["after"]}
+                </div>
 
             </div>
             """,
@@ -3814,9 +4004,25 @@ elif st.session_state.page == "Reassessment":
                 f"{change:+d} {L['points']}"
             )
 
-        st.success(
-            f"✓ {L['completed']}"
-        )
+        if change > 0:
+
+            st.success(
+                f"🎉 {L['improved']}"
+            )
+
+        elif change == 0:
+
+            st.info(
+                f"🌱 {L['same_score']}"
+            )
+
+        else:
+
+            st.info(
+                f"💪 {L['review_again']}"
+            )
+
+        show_encouragement(after)
 
 
 # =========================================================
@@ -3833,4 +4039,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
