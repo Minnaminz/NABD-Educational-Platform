@@ -1,3 +1,4 @@
+```python
 from pathlib import Path
 import random
 import html
@@ -56,6 +57,13 @@ Provide exactly 4 answer choices.
 Provide the correct answer.
 Provide a clear step-by-step solution.
 
+IMPORTANT:
+- Return plain text only inside the JSON fields.
+- Do not use HTML tags.
+- Do not use Markdown formatting.
+- Do not use code blocks.
+- Do not include <div>, <p>, <span>, <br>, or any other HTML.
+
 Return ONLY valid JSON in this format:
 {{
     "question": "...",
@@ -77,6 +85,13 @@ The question must be in English.
 Provide exactly 4 answer choices.
 Provide the correct answer.
 Provide a clear step-by-step solution.
+
+IMPORTANT:
+- Return plain text only inside the JSON fields.
+- Do not use HTML tags.
+- Do not use Markdown formatting.
+- Do not use code blocks.
+- Do not include <div>, <p>, <span>, <br>, or any other HTML.
 
 Return ONLY valid JSON in this format:
 {{
@@ -1039,6 +1054,7 @@ st.markdown(
         font-size: 20px;
         font-weight: 850;
         line-height: 1.55;
+        white-space: pre-wrap;
     }}
 
     /* =========================
@@ -1193,7 +1209,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 
 
 # =========================================================
@@ -1815,6 +1830,9 @@ Requirements:
 8. Make the difficulty match the requested level.
 9. Do not include unsafe, inappropriate, or non-educational content.
 10. Return ONLY valid JSON.
+11. Do not use HTML tags, Markdown, or code formatting inside any field.
+12. Return plain text only inside question, options, answer, and solution.
+13. Do not include <div>, <p>, <span>, <br>, or any other HTML tags.
 
 Return an array where every item has:
 
@@ -1940,28 +1958,95 @@ solution
             )
         ).strip()
 
+        # -------------------------------------------------
+        # CLEAN ACCIDENTAL HTML FROM AI OUTPUT
+        # -------------------------------------------------
+
+        question = html.unescape(
+            question
+        )
+
+        solution = html.unescape(
+            solution
+        )
+
+        cleaned_options = []
+
+        if isinstance(options, list):
+
+            for option in options:
+
+                option_text = html.unescape(
+                    str(option).strip()
+                )
+
+                cleaned_options.append(
+                    option_text
+                )
+
+        answer = html.unescape(
+            answer
+        )
+
+        # Remove common accidental HTML tags.
+        # This keeps the AI output as normal text.
+        html_tags_to_remove = [
+            "<div>",
+            "</div>",
+            "<p>",
+            "</p>",
+            "<span>",
+            "</span>",
+            "<br>",
+            "<br/>",
+            "<br />"
+        ]
+
+        for tag in html_tags_to_remove:
+
+            question = question.replace(
+                tag,
+                "\n" if "br" in tag else ""
+            )
+
+            solution = solution.replace(
+                tag,
+                "\n" if "br" in tag else ""
+            )
+
+            answer = answer.replace(
+                tag,
+                ""
+            )
+
+            cleaned_options = [
+                option.replace(
+                    tag,
+                    "\n" if "br" in tag else ""
+                )
+                for option in cleaned_options
+            ]
+
+        question = question.strip()
+        solution = solution.strip()
+        answer = answer.strip()
+
         if (
             question
             and isinstance(
-                options,
+                cleaned_options,
                 list
             )
-            and len(options) == 4
+            and len(cleaned_options) == 4
             and answer
             and solution
-            and answer in [
-                str(option)
-                for option in options
-            ]
+            and answer in cleaned_options
         ):
 
             valid_questions.append(
                 {
                     "question": question,
-                    "options": [
-                        str(option)
-                        for option in options
-                    ],
+                    "options": cleaned_options,
                     "answer": answer,
                     "solution": solution
                 }
@@ -3157,8 +3242,42 @@ elif st.session_state.page == "AI Questions":
             st.session_state.ai_questions
         ):
 
+            # -------------------------------------------------
+            # SAFELY DISPLAY AI QUESTION AS TEXT
+            # -------------------------------------------------
+
+            question_text = str(
+                q.get(
+                    "question",
+                    ""
+                )
+            ).strip()
+
+            question_text = html.unescape(
+                question_text
+            )
+
+            # Remove accidental HTML tags
+            # if the AI somehow returns them.
+            question_text = (
+                question_text
+                .replace("<div>", "")
+                .replace("</div>", "")
+                .replace("<p>", "")
+                .replace("</p>", "")
+                .replace("<span>", "")
+                .replace("</span>", "")
+                .replace("<br>", "\n")
+                .replace("<br/>", "\n")
+                .replace("<br />", "\n")
+            )
+
             question_text = html.escape(
-                str(q["question"])
+                question_text
+            )
+
+            question_number = html.escape(
+                str(L["question"])
             )
 
             st.markdown(
@@ -3166,7 +3285,7 @@ elif st.session_state.page == "AI Questions":
                 <div class="ai-question-card">
 
                     <div class="ai-question-number">
-                    {L["question"]} {i + 1}
+                    {question_number} {i + 1}
                     </div>
 
                     <div class="question-text">
@@ -3263,7 +3382,9 @@ elif st.session_state.page == "Activities":
     ]
 
     for col, icon, title, desc in activities:
+
         with col:
+
             st.markdown(
                 f"""
                 <div class="activity-card">
@@ -3282,13 +3403,18 @@ elif st.session_state.page == "Activities":
         use_container_width=True,
         key="activity_start_challenge"
     ):
+
         st.session_state.challenge_questions = random.sample(
             QUESTIONS,
             min(5, len(QUESTIONS))
         )
+
         st.session_state.challenge_answers = {}
+
         st.session_state.challenge_submitted = False
+
         st.session_state.challenge_score = None
+
         st.rerun()
 
     if st.session_state.challenge_questions:
@@ -3304,7 +3430,9 @@ elif st.session_state.page == "Activities":
 
         if not st.session_state.challenge_submitted:
 
-            questions = st.session_state.challenge_questions
+            questions = (
+                st.session_state.challenge_questions
+            )
 
             for i, q in enumerate(questions):
 
@@ -3333,7 +3461,9 @@ elif st.session_state.page == "Activities":
                     key=f"challenge_answer_{q['id']}"
                 )
 
-                st.session_state.challenge_answers[q["id"]] = answer
+                st.session_state.challenge_answers[
+                    q["id"]
+                ] = answer
 
             if st.button(
                 f"🏆 {L['finish']}",
@@ -3355,11 +3485,14 @@ elif st.session_state.page == "Activities":
                 )
 
                 st.session_state.challenge_submitted = True
+
                 st.rerun()
 
         else:
 
-            score = st.session_state.challenge_score
+            score = (
+                st.session_state.challenge_score
+            )
 
             st.markdown(
                 f"""
@@ -3367,6 +3500,7 @@ elif st.session_state.page == "Activities":
                     <div class="hero-small">
                         {L["challenge_complete"]}
                     </div>
+
                     <div style="
                         font-size:58px;
                         font-weight:900;
@@ -3374,6 +3508,7 @@ elif st.session_state.page == "Activities":
                     ">
                         {score}%
                     </div>
+
                     <div style="
                         font-size:20px;
                         opacity:.85;
@@ -3390,13 +3525,18 @@ elif st.session_state.page == "Activities":
                 use_container_width=True,
                 key="activity_again"
             ):
+
                 st.session_state.challenge_questions = random.sample(
                     QUESTIONS,
                     min(5, len(QUESTIONS))
                 )
+
                 st.session_state.challenge_answers = {}
+
                 st.session_state.challenge_submitted = False
+
                 st.session_state.challenge_score = None
+
                 st.rerun()
 
 
@@ -3440,7 +3580,7 @@ elif st.session_state.page == "Learning Path":
         (
             "04",
             "📈",
-            L["reassess_title"],
+            L["reassessment_title"],
             L["step4"]
         )
     ]
@@ -3694,3 +3834,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+```
