@@ -3,6 +3,7 @@ import random
 import html
 import json
 import time
+import textwrap
 
 from google import genai
 import pandas as pd
@@ -713,6 +714,7 @@ else:
 # =========================================================
 
 st.markdown(
+    textwrap.dedent(
     f"""
     <style>
 
@@ -1375,7 +1377,8 @@ st.markdown(
     }}
 
     </style>
-    """,
+    """
+    ),
     unsafe_allow_html=True
 )
 
@@ -1936,6 +1939,7 @@ def show_encouragement(score, focus_skill=None):
     title, description = get_encouragement(score)
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="encouragement-card">
 
@@ -1948,13 +1952,15 @@ def show_encouragement(score, focus_skill=None):
             </div>
 
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
     if focus_skill:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="focus-card">
 
@@ -1970,7 +1976,8 @@ def show_encouragement(score, focus_skill=None):
                 </span>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -2315,6 +2322,7 @@ def get_ai_error_message(error):
 with st.sidebar:
 
     st.markdown(
+        textwrap.dedent(
         """
         <div style="
             font-size:34px;
@@ -2331,7 +2339,8 @@ with st.sidebar:
         ">
             PERSONALIZED LEARNING
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -2433,6 +2442,7 @@ with st.sidebar:
 if st.session_state.page == "Home":
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="hero">
 
@@ -2450,7 +2460,8 @@ if st.session_state.page == "Home":
             </div>
 
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -2459,6 +2470,7 @@ if st.session_state.page == "Home":
     with col1:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="stat-card">
                 <div class="stat-label">
@@ -2469,13 +2481,15 @@ if st.session_state.page == "Home":
                     30
                 </div>
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
     with col2:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="stat-card">
                 <div class="stat-label">
@@ -2486,13 +2500,15 @@ if st.session_state.page == "Home":
                     3
                 </div>
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
     with col3:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="stat-card">
                 <div class="stat-label">
@@ -2504,16 +2520,19 @@ if st.session_state.page == "Home":
                     {L["decision_tree"]}
                 </div>
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="section-title">
             {L["journey"]}
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -2547,6 +2566,7 @@ if st.session_state.page == "Home":
         with col:
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="journey-card">
 
@@ -2570,7 +2590,8 @@ if st.session_state.page == "Home":
                     </div>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -2624,6 +2645,7 @@ elif st.session_state.page == "Assessment":
         )
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="question-card">
 
@@ -2642,7 +2664,8 @@ elif st.session_state.page == "Assessment":
                 </h2>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -2724,6 +2747,7 @@ elif st.session_state.page == "Assessment":
         )
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="hero">
 
@@ -2745,7 +2769,8 @@ elif st.session_state.page == "Assessment":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -2822,6 +2847,7 @@ elif st.session_state.page == "Learning Snapshot":
     with c1:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="stat-card">
 
@@ -2834,13 +2860,15 @@ elif st.session_state.page == "Learning Snapshot":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
     with c2:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="stat-card">
 
@@ -2854,13 +2882,15 @@ elif st.session_state.page == "Learning Snapshot":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
     with c3:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="stat-card">
 
@@ -2873,22 +2903,26 @@ elif st.session_state.page == "Learning Snapshot":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="section-title">
             {L["skill_performance"]}
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
     for skill, value in skill_scores.items():
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="skill-card">
 
@@ -2910,18 +2944,21 @@ elif st.session_state.page == "Learning Snapshot":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
         st.progress(value / 100)
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="section-title">
             {L["practice_needed"]}
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -2940,11 +2977,13 @@ elif st.session_state.page == "Learning Snapshot":
         )
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="section-title">
             📈 {L["journey"]}
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -3022,6 +3061,7 @@ elif st.session_state.page == "Error Analysis":
             )
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="question-card">
 
@@ -3040,7 +3080,8 @@ elif st.session_state.page == "Error Analysis":
                     </p>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -3115,6 +3156,7 @@ elif st.session_state.page == "Smart Practice":
             for i, q in enumerate(questions):
 
                 st.markdown(
+                    textwrap.dedent(
                     f"""
                     <div class="question-card">
 
@@ -3130,7 +3172,8 @@ elif st.session_state.page == "Smart Practice":
                         </h3>
 
                     </div>
-                    """,
+                    """
+                    ),
                     unsafe_allow_html=True
                 )
 
@@ -3202,6 +3245,7 @@ elif st.session_state.page == "Smart Practice":
             )
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="hero">
 
@@ -3215,7 +3259,8 @@ elif st.session_state.page == "Smart Practice":
                     </div>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -3269,6 +3314,7 @@ elif st.session_state.page == "Smart Practice":
 elif st.session_state.page == "AI Questions":
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="ai-header">
 
@@ -3281,7 +3327,8 @@ elif st.session_state.page == "AI Questions":
             </p>
 
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -3300,11 +3347,13 @@ elif st.session_state.page == "AI Questions":
     with col1:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="ai-control-label">
                 {L["ai_skill"]}
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -3318,11 +3367,13 @@ elif st.session_state.page == "AI Questions":
     with col2:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="ai-control-label">
                 {L["ai_difficulty"]}
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -3336,11 +3387,13 @@ elif st.session_state.page == "AI Questions":
     with col3:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="ai-control-label">
                 {L["ai_count"]}
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -3412,11 +3465,13 @@ elif st.session_state.page == "AI Questions":
     if st.session_state.ai_questions:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="ai-generated-title">
                 🤖 {L["ai_generated"]}
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -3454,6 +3509,7 @@ elif st.session_state.page == "AI Questions":
             )
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="ai-question-card">
 
@@ -3466,7 +3522,8 @@ elif st.session_state.page == "AI Questions":
                     </div>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -3513,6 +3570,7 @@ elif st.session_state.page == "AI Questions":
 elif st.session_state.page == "Activities":
 
     st.markdown(
+        textwrap.dedent(
         f"""
         <div class="hero">
 
@@ -3529,7 +3587,8 @@ elif st.session_state.page == "Activities":
             </div>
 
         </div>
-        """,
+        """
+        ),
         unsafe_allow_html=True
     )
 
@@ -3564,6 +3623,7 @@ elif st.session_state.page == "Activities":
         with col:
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="activity-card">
 
@@ -3580,7 +3640,8 @@ elif st.session_state.page == "Activities":
                     </div>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -3608,11 +3669,13 @@ elif st.session_state.page == "Activities":
     if st.session_state.challenge_questions:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="section-title">
                 ⚡ {L["challenge"]}
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -3623,6 +3686,7 @@ elif st.session_state.page == "Activities":
             for i, q in enumerate(questions):
 
                 st.markdown(
+                    textwrap.dedent(
                     f"""
                     <div class="question-card">
 
@@ -3639,7 +3703,8 @@ elif st.session_state.page == "Activities":
                         </h3>
 
                     </div>
-                    """,
+                    """
+                    ),
                     unsafe_allow_html=True
                 )
 
@@ -3694,6 +3759,7 @@ elif st.session_state.page == "Activities":
             score = st.session_state.challenge_score
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="hero">
 
@@ -3717,7 +3783,8 @@ elif st.session_state.page == "Activities":
                     </div>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -3790,6 +3857,7 @@ elif st.session_state.page == "Learning Path":
     for number, icon, title, desc in path_items:
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="path-card">
 
@@ -3829,7 +3897,8 @@ elif st.session_state.page == "Learning Path":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -3878,6 +3947,7 @@ elif st.session_state.page == "Reassessment":
         for i, q in enumerate(questions):
 
             st.markdown(
+                textwrap.dedent(
                 f"""
                 <div class="question-card">
 
@@ -3893,7 +3963,8 @@ elif st.session_state.page == "Reassessment":
                     </h3>
 
                 </div>
-                """,
+                """
+                ),
                 unsafe_allow_html=True
             )
 
@@ -3954,6 +4025,7 @@ elif st.session_state.page == "Reassessment":
         change = after - before
 
         st.markdown(
+            textwrap.dedent(
             f"""
             <div class="hero">
 
@@ -3977,7 +4049,8 @@ elif st.session_state.page == "Reassessment":
                 </div>
 
             </div>
-            """,
+            """
+            ),
             unsafe_allow_html=True
         )
 
@@ -4030,12 +4103,14 @@ elif st.session_state.page == "Reassessment":
 # =========================================================
 
 st.markdown(
+    textwrap.dedent(
     f"""
     <div class="footer">
         {L["footer"]}<br>
         © 2026 MINNA MOHAMMED — NABD Educational Platform.
         All rights reserved.
     </div>
-    """,
+    """
+    ),
     unsafe_allow_html=True
 )
