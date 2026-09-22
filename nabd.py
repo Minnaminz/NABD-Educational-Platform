@@ -7,15 +7,16 @@ import time
 from google import genai
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from sklearn.tree import DecisionTreeClassifier
 
 
 # =========================================================
-# PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION
 # =========================================================
 
 st.set_page_config(
-    page_title="NABD",
+    page_title="NABD | منصة نبض التعليمية",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -23,92 +24,61 @@ st.set_page_config(
 
 
 # =========================================================
-# GEMINI CLIENT SETUP
+# 2. SOUND & EFFECTS HELPER (تشجيع وحفاوة للنتائج)
+# =========================================================
+
+def play_audio_and_effects(score):
+    if score >= 75:
+        st.balloons()
+        # صوت تصفيق وتشجيع احتفالي
+        audio_html = """
+            <audio autoplay>
+                <source src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" type="audio/mpeg">
+            </audio>
+        """
+        components.html(audio_html, height=0)
+    else:
+        # صوت تحفيزي هادئ
+        audio_html = """
+            <audio autoplay>
+                <source src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3" type="audio/mpeg">
+            </audio>
+        """
+        components.html(audio_html, height=0)
+
+
+# =========================================================
+# 3. GEMINI CLIENT SETUP
 # =========================================================
 
 try:
-    client = genai.Client(
-        api_key=st.secrets["GEMINI_API_KEY"]
-    )
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception:
     client = None
 
 
-def generate_ai_question(
-    skill,
-    difficulty,
-    language="English"
-):
+def generate_ai_questions(skill, difficulty, count, language):
     if client is None:
-        return None
+        raise RuntimeError("Gemini API is not configured.")
 
-    if language == "Arabic":
-        prompt = f"""
-Create one educational multiple-choice math question.
-
+    prompt = f"""
+Create exactly {count} multiple-choice math questions in {language}.
 Skill: {skill}
 Difficulty: {difficulty}
 
-The question must be in Arabic.
-Provide exactly 4 answer choices.
-Provide the correct answer.
-Provide a clear step-by-step solution.
-
-Return ONLY valid JSON in this format:
-{{
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "answer": "...",
-    "solution": "..."
-}}
-"""
-    else:
-        prompt = f"""
-Create one educational multiple-choice math question.
-
-Skill: {skill}
-Difficulty: {difficulty}
-
-The question must be in English.
-Provide exactly 4 answer choices.
-Provide the correct answer.
-Provide a clear step-by-step solution.
-
-Return ONLY valid JSON in this format:
-{{
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "answer": "...",
-    "solution": "..."
-}}
+Return ONLY a valid JSON array of objects with keys: "question", "options" (array of 4), "answer", "solution".
 """
 
-    for attempt in range(3):
-        try:
-            # FIX: Updated model name to official stable version
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json"
-                }
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            error_message = str(e)
-            if "503" in error_message or "UNAVAILABLE" in error_message:
-                if attempt < 2:
-                    time.sleep(2)
-                    continue
-            st.error(f"AI Error: {e}")
-            return None
-
-    st.error("Gemini is temporarily busy. Please try again in a few seconds.")
-    return None
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={"response_mime_type": "application/json"}
+    )
+    return json.loads(response.text)
 
 
 # =========================================================
-# PATHS + DATA LOADING
+# 4. PATHS + DATA LOADING & MODEL TRAINING
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -116,1986 +86,524 @@ DATA_FILE = BASE_DIR / "nabd_data.csv"
 
 try:
     df = pd.read_csv(DATA_FILE)
-except Exception as e:
-    st.error("Unable to load nabd_data.csv")
-    st.code(str(e))
-    st.stop()
+    df["student_id"] = df["student_id"].fillna(0)
+    df["concept"] = df["concept"].fillna("Unknown").astype(str)
+    df["skill"] = df["skill"].fillna("Unknown").astype(str)
+    df["error_type"] = df["error_type"].fillna("Unknown").astype(str)
+    df["correct"] = pd.to_numeric(df["correct"], errors="coerce").fillna(0).astype(int)
+except Exception:
+    df = pd.DataFrame(columns=["student_id", "concept", "skill", "error_type", "correct"])
 
-required_columns = [
-    "student_id",
-    "concept",
-    "skill",
-    "error_type",
-    "correct"
-]
-
-missing_columns = [col for col in required_columns if col not in df.columns]
-
-if missing_columns:
-    st.error("Missing columns in nabd_data.csv")
-    st.write(missing_columns)
-    st.stop()
-
-
-# =========================================================
-# DATA CLEANING
-# =========================================================
-
-df["student_id"] = df["student_id"].fillna(0)
-df["concept"] = df["concept"].fillna("Unknown").astype(str)
-df["skill"] = df["skill"].fillna("Unknown").astype(str)
-df["error_type"] = df["error_type"].fillna("Unknown").astype(str)
-df["correct"] = pd.to_numeric(df["correct"], errors="coerce").fillna(0).astype(int)
+# تدريب نموذج شجرة القرار لتحليل الأخطاء (Decision Tree Classifier)
+if not df.empty:
+    X = pd.get_dummies(df[["concept", "skill", "correct"]], drop_first=True)
+    y = df["error_type"]
+    clf = DecisionTreeClassifier(random_state=42)
+    clf.fit(X, y)
+    feature_columns = X.columns
+else:
+    clf = None
+    feature_columns = []
 
 
 # =========================================================
-# TRANSLATIONS
+# 5. TRANSLATIONS (اللغات)
 # =========================================================
 
 T = {
     "English": {
-        "home": "Home",
-        "assessment": "Assessment",
-        "snapshot": "Learning Snapshot",
-        "errors": "Error Analysis",
-        "practice": "Smart Practice",
-        "ai_questions": "AI Question Generator",
-        "path": "Learning Path",
-        "reassessment": "Reassessment",
-        "language": "Language",
-        "english": "English",
-        "arabic": "العربية",
-        "hero_small": "PERSONALIZED LEARNING • AI • DATA",
-        "hero_title": "Understand your learning.",
-        "hero_title2": "Improve with purpose.",
-        "hero_desc": "NABD transforms assessment results into meaningful learning insights and targeted practice.",
-        "start": "Start Assessment",
-        "continue": "Continue Learning",
-        "journey": "Your Learning Journey",
-        "assess": "Assess",
-        "assess_desc": "Measure your current performance.",
-        "analyze": "Analyze",
-        "analyze_desc": "Discover possible learning gaps.",
-        "practice_title": "Practice",
-        "practice_desc": "Focus on skills that need attention.",
-        "reassess_title": "Reassess",
-        "reassess_desc": "Measure your progress.",
-        "questions": "Questions",
-        "skills": "Skills",
-        "model": "ML Model",
-        "decision_tree": "Decision Tree",
-        "placement": "Placement Assessment",
-        "placement_desc": "Answer the questions to estimate your current learning level.",
-        "question": "Question",
-        "of": "of",
-        "choose": "Choose your answer",
-        "previous": "Previous",
-        "next": "Next",
-        "finish": "Finish Assessment",
-        "score": "Score",
-        "level": "Estimated Level",
-        "advanced": "Advanced",
-        "proficient": "Proficient",
-        "developing": "Developing",
-        "beginner": "Beginner",
-        "snapshot_title": "Learning Snapshot",
-        "overall": "Overall Accuracy",
-        "assessed_skills": "Skills Assessed",
-        "skill_performance": "Skill Performance",
-        "practice_needed": "Skills That May Need Practice",
-        "no_practice": "No skill fell below the practice threshold.",
-        "recommended": "Practice recommended",
-        "error_title": "Error Analysis",
-        "wrong": "incorrect answer(s)",
-        "your_answer": "Your answer",
-        "correct_answer": "Correct answer",
-        "potential": "Potential error pattern",
-        "solution": "Step-by-step solution",
-        "perfect": "Excellent! No incorrect answers.",
-        "smart_title": "Smart Practice",
-        "choose_skill": "Choose a skill to practice",
-        "generate": "Generate Practice Set",
-        "learning_point": "Learning Point",
-        "finish_practice": "Finish Practice",
-        "practice_complete": "Practice complete!",
-        "more_practice": "More practice may be helpful before reassessment.",
-        "ready_reassess": "This skill appears ready for reassessment.",
-        "ai_title": "AI Question Generator",
-        "ai_desc": "Generate personalized practice questions with AI.",
-        "ai_skill": "Choose a skill",
-        "ai_difficulty": "Choose difficulty",
-        "ai_count": "Number of questions",
-        "ai_generate": "Generate AI Questions",
-        "ai_generated": "AI-generated questions",
-        "ai_error": "Unable to generate questions right now.",
-        "path_title": "Your Learning Path",
-        "path_desc": "NABD connects assessment, analysis, practice, and reassessment.",
-        "step1": "Assess your current level",
-        "step2": "Analyze your skill performance",
-        "step3": "Practice targeted skills",
-        "step4": "Reassess your progress",
-        "reassessment_title": "Reassessment",
-        "reassessment_desc": "Take a new set of questions to compare your performance.",
-        "before": "Before",
-        "after": "After",
-        "change": "Change",
-        "points": "pts",
-        "completed": "Reassessment completed.",
-        "footer": "NABD • Personalized Learning Platform • Student Project Prototype",
-        "data_error": "There is a problem with the dataset.",
-        "complete_first": "Complete the assessment first.",
-        "theme": "Theme",
-        "dark": "Dark",
-        "light": "Light",
-        "activities": "Learning Activities",
-        "activities_title": "NABD Learning Activities",
-        "activities_desc": "Short challenges that make practice more engaging.",
-        "challenge": "NABD Challenge",
-        "challenge_desc": "Answer 5 questions and test your skills.",
-        "start_challenge": "Start Challenge",
-        "challenge_complete": "Challenge complete!",
-        "challenge_score": "Challenge Score",
-        "challenge_again": "Try Again",
-        "challenge_locked": "Start the challenge to begin.",
-        "ai_status": "AI status",
-        "ai_ready": "Gemini is ready",
-        "ai_unavailable": "Gemini is not configured",
-        "appearance": "Appearance"
+        "home": "Home", "assessment": "Assessment", "snapshot": "Snapshot",
+        "errors": "Error Analysis", "practice": "Smart Practice", "ai_questions": "AI Generator",
+        "activities": "Activities & Games", "path": "Learning Path", "reassessment": "Reassessment",
+        "language": "Language", "theme": "Theme", "dark": "Dark", "light": "Light",
+        "start": "Start Assessment", "score": "Score", "level": "Level",
+        "next": "Next", "previous": "Previous", "finish": "Finish", "choose": "Select Answer"
     },
     "العربية": {
-        "home": "الرئيسية",
-        "assessment": "التقييم",
-        "snapshot": "ملخص التعلم",
-        "errors": "تحليل الأخطاء",
-        "practice": "التدريب الذكي",
-        "ai_questions": "مولّد الأسئلة بالذكاء الاصطناعي",
-        "path": "مسار التعلم",
-        "reassessment": "إعادة التقييم",
-        "language": "اللغة",
-        "english": "English",
-        "arabic": "العربية",
-        "hero_small": "تعلم شخصي • ذكاء اصطناعي • تحليل بيانات",
-        "hero_title": "افهم طريقة تعلّمك.",
-        "hero_title2": "وتحسّن بذكاء.",
-        "hero_desc": "يحوّل NABD نتائج التقييم إلى معلومات مفيدة وتدريبات مخصصة تساعد الطالب على التركيز على المهارات التي تحتاج إلى ممارسة.",
-        "start": "ابدأ التقييم",
-        "continue": "تابع التعلم",
-        "journey": "رحلة التعلم",
-        "assess": "قيّم",
-        "assess_desc": "قِس مستواك الحالي.",
-        "analyze": "حلّل",
-        "analyze_desc": "اكتشف المهارات التي قد تحتاج إلى دعم.",
-        "practice_title": "تدرّب",
-        "practice_desc": "ركّز على المهارات التي تحتاج إلى ممارسة.",
-        "reassess_title": "أعد التقييم",
-        "reassess_desc": "قِس تطورك بعد التدريب.",
-        "questions": "الأسئلة",
-        "skills": "المهارات",
-        "model": "نموذج التعلم الآلي",
-        "decision_tree": "شجرة القرار",
-        "placement": "التقييم التشخيصي",
-        "placement_desc": "أجب عن الأسئلة لتحديد مستواك الحالي بشكل تقريبي.",
-        "question": "السؤال",
-        "of": "من",
-        "choose": "اختر إجابتك",
-        "previous": "السابق",
-        "next": "التالي",
-        "finish": "إنهاء التقييم",
-        "score": "النتيجة",
-        "level": "المستوى التقديري",
-        "advanced": "متقدم",
-        "proficient": "متقن",
-        "developing": "في طور التطور",
-        "beginner": "مبتدئ",
-        "snapshot_title": "ملخص التعلم",
-        "overall": "الدقة الإجمالية",
-        "assessed_skills": "المهارات التي تم تقييمها",
-        "skill_performance": "أداء المهارات",
-        "practice_needed": "المهارات التي قد تحتاج إلى ممارسة",
-        "no_practice": "لم تنخفض أي مهارة عن حد الممارسة المحدد.",
-        "recommended": "ممارسة مقترحة",
-        "error_title": "تحليل الأخطاء",
-        "wrong": "إجابة غير صحيحة",
-        "your_answer": "إجابتك",
-        "correct_answer": "الإجابة الصحيحة",
-        "potential": "نمط الخطأ المحتمل",
-        "solution": "الحل خطوة بخطوة",
-        "perfect": "ممتاز! لا توجد إجابات غير صحيحة.",
-        "smart_title": "التدريب الذكي",
-        "choose_skill": "اختر مهارة للتدريب",
-        "generate": "إنشاء مجموعة تدريب",
-        "learning_point": "نقطة التعلم",
-        "finish_practice": "إنهاء التدريب",
-        "practice_complete": "اكتمل التدريب!",
-        "more_practice": "قد تحتاج إلى المزيد من التدريب قبل إعادة التقييم.",
-        "ready_reassess": "يبدو أن هذه المهارة جاهزة لإعادة التقييم.",
-        "ai_title": "مولّد الأسئلة بالذكاء الاصطناعي",
-        "ai_desc": "أنشئ أسئلة تدريبية مخصصة باستخدام الذكاء الاصطناعي.",
-        "ai_skill": "اختر المهارة",
-        "ai_difficulty": "اختر مستوى الصعوبة",
-        "ai_count": "عدد الأسئلة",
-        "ai_generate": "إنشاء أسئلة بالذكاء الاصطناعي",
-        "ai_generated": "الأسئلة التي أنشأها الذكاء الاصطناعي",
-        "ai_error": "تعذر إنشاء الأسئلة حاليًا.",
-        "path_title": "مسار التعلم",
-        "path_desc": "يربط NABD بين التقييم والتحليل والتدريب وإعادة التقييم.",
-        "step1": "قيّم مستواك الحالي",
-        "step2": "حلّل أداء مهاراتك",
-        "step3": "تدرّب على المهارات المستهدفة",
-        "step4": "أعد تقييم تقدمك",
-        "reassessment_title": "إعادة التقييم",
-        "reassessment_desc": "أجب عن مجموعة جديدة من الأسئلة لمقارنة أدائك.",
-        "before": "قبل",
-        "after": "بعد",
-        "change": "التغير",
-        "points": "نقطة",
-        "completed": "اكتملت إعادة التقييم.",
-        "footer": "NABD • منصة تعلم شخصي • نموذج مشروع طلابي",
-        "data_error": "هناك مشكلة في بيانات المشروع.",
-        "complete_first": "أكمل التقييم أولاً.",
-        "theme": "المظهر",
-        "dark": "داكن",
-        "light": "فاتح",
-        "activities": "الفعاليات التعليمية",
-        "activities_title": "فعاليات NABD التعليمية",
-        "activities_desc": "تحديات قصيرة تجعل التدريب أكثر تفاعلاً ومتعة.",
-        "challenge": "تحدي NABD",
-        "challenge_desc": "أجب عن ٥ أسئلة واختبر مهاراتك.",
-        "start_challenge": "ابدأ التحدي",
-        "challenge_complete": "اكتمل التحدي!",
-        "challenge_score": "نتيجة التحدي",
-        "challenge_again": "حاول مرة أخرى",
-        "challenge_locked": "ابدأ التحدي للبدء.",
-        "ai_status": "حالة الذكاء الاصطناعي",
-        "ai_ready": "Gemini جاهز",
-        "ai_unavailable": "Gemini غير مهيأ",
-        "appearance": "المظهر"
+        "home": "الرئيسية", "assessment": "التقييم التشخيصي", "snapshot": "ملخص التعلم",
+        "errors": "تحليل الأخطاء", "practice": "التدريب الذكي", "ai_questions": "مولّد الأسئلة (AI)",
+        "activities": "الفعاليات والألعاب", "path": "مسار التعلم", "reassessment": "إعادة التقييم",
+        "language": "اللغة", "theme": "المظهر", "dark": "داكن", "light": "فاتح",
+        "start": "ابدأ التقييم", "score": "النتيجة", "level": "المستوى",
+        "next": "التالي", "previous": "السابق", "finish": "إنهاء الاختبار", "choose": "اختر الإجابة الصحيحة"
     }
 }
 
 
 # =========================================================
-# SESSION STATE INITIALIZATION
+# 6. SESSION STATE INITIALIZATION
 # =========================================================
 
-if "lang" not in st.session_state:
-    st.session_state.lang = "English"
-
-if "theme" not in st.session_state:
-    st.session_state.theme = "Dark"
-
-if "challenge_questions" not in st.session_state:
-    st.session_state.challenge_questions = []
-
-if "challenge_answers" not in st.session_state:
-    st.session_state.challenge_answers = {}
-
-if "challenge_submitted" not in st.session_state:
-    st.session_state.challenge_submitted = False
-
-if "challenge_score" not in st.session_state:
-    st.session_state.challenge_score = None
-
-if "page" not in st.session_state:
-    st.session_state.page = "Home"
-
-if "assessment_questions" not in st.session_state:
-    st.session_state.assessment_questions = []
-
-if "assessment_answers" not in st.session_state:
-    st.session_state.assessment_answers = {}
-
-if "assessment_index" not in st.session_state:
-    st.session_state.assessment_index = 0
-
-if "assessment_submitted" not in st.session_state:
-    st.session_state.assessment_submitted = False
-
-if "before_score" not in st.session_state:
-    st.session_state.before_score = None
-
-if "after_score" not in st.session_state:
-    st.session_state.after_score = None
-
-if "practice_questions" not in st.session_state:
-    st.session_state.practice_questions = []
-
-if "practice_answers" not in st.session_state:
-    st.session_state.practice_answers = {}
-
-if "reassessment_questions" not in st.session_state:
-    st.session_state.reassessment_questions = []
-
-if "reassessment_answers" not in st.session_state:
-    st.session_state.reassessment_answers = {}
-
-if "reassessment_submitted" not in st.session_state:
-    st.session_state.reassessment_submitted = False
-
-if "ai_questions" not in st.session_state:
-    st.session_state.ai_questions = []
-
-
-# =========================================================
-# LANGUAGE CONFIGURATION
-# =========================================================
+for key, default in [
+    ("lang", "العربية"), ("theme", "Dark"), ("page", "Home"),
+    ("assessment_questions", []), ("assessment_answers", {}),
+    ("assessment_index", 0), ("assessment_submitted", False),
+    ("before_score", None), ("after_score", None),
+    ("reassess_questions", []), ("reassess_answers", {}),
+    ("reassess_index", 0), ("reassess_submitted", False),
+    ("streak", 5), ("user_points", 320),
+    ("timer_start", None), ("speed_score", 0), ("speed_index", 0)
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 L = T[st.session_state.lang]
 is_arabic = (st.session_state.lang == "العربية")
-direction = "rtl" if is_arabic else "ltr"
-text_align = "right" if is_arabic else "left"
 
 
 # =========================================================
-# STYLES & THEME
+# 7. STYLES & MODERN COLOR PALETTE
 # =========================================================
 
 if st.session_state.theme == "Dark":
     COLORS = {
-        "page": "#0b1120",
-        "surface": "#111827",
-        "surface_alt": "#172033",
-        "surface_soft": "#1e293b",
-        "text": "#f8fafc",
-        "muted": "#cbd5e1",
-        "border": "#334155",
-        "accent": "#818cf8",
-        "accent_2": "#c084fc",
-        "accent_dark": "#3730a3",
-        "hero_1": "#111827",
-        "hero_2": "#1e293b",
-        "hero_3": "#312e81",
-        "button_text": "#ffffff",
-        "input_bg": "#0f172a",
-        "code_bg": "#020617",
-        "sidebar_1": "#0b1020",
-        "sidebar_2": "#171b3a",
-        "shadow": "rgba(0,0,0,.28)",
+        "page": "#0b0f19", "surface": "#1e293b", "surface_alt": "#334155",
+        "text": "#f8fafc", "muted": "#94a3b8", "border": "#475569",
+        "accent": "#6366f1", "accent_grad": "linear-gradient(135deg, #4f46e5, #7c3aed)",
+        "card_bg": "rgba(30, 41, 59, 0.85)"
     }
 else:
     COLORS = {
-        "page": "#f5f7fb",
-        "surface": "#ffffff",
-        "surface_alt": "#f8fafc",
-        "surface_soft": "#eef2ff",
-        "text": "#111827",
-        "muted": "#475569",
-        "border": "#dbe2ea",
-        "accent": "#4f46e5",
-        "accent_2": "#9333ea",
-        "accent_dark": "#312e81",
-        "hero_1": "#172554",
-        "hero_2": "#312e81",
-        "hero_3": "#581c87",
-        "button_text": "#ffffff",
-        "input_bg": "#ffffff",
-        "code_bg": "#f1f5f9",
-        "sidebar_1": "#111827",
-        "sidebar_2": "#312e81",
-        "shadow": "rgba(15,23,42,.10)",
+        "page": "#f1f5f9", "surface": "#ffffff", "surface_alt": "#e2e8f0",
+        "text": "#0f172a", "muted": "#64748b", "border": "#cbd5e1",
+        "accent": "#4f46e5", "accent_grad": "linear-gradient(135deg, #6366f1, #a855f7)",
+        "card_bg": "#ffffff"
     }
 
-st.markdown(
-    f"""
+st.markdown(f"""
     <style>
-    :root {{
-        color-scheme: {"dark" if st.session_state.theme == "Dark" else "light"};
-    }}
-    html, body, [class*="css"] {{
-        font-family: "Segoe UI", Arial, sans-serif;
-    }}
-    body {{
-        background: {COLORS["page"]} !important;
-    }}
-    .stApp {{
-        background: radial-gradient(circle at 90% 5%, rgba(99,102,241,.08), transparent 28%), {COLORS["page"]} !important;
-        color: {COLORS["text"]} !important;
-    }}
-    .main {{
-        direction: {direction};
-        background: transparent !important;
-    }}
-    .block-container {{
-        max-width: 1250px;
-        padding-top: 2rem;
-        padding-bottom: 4rem;
-    }}
-    [data-testid="stSidebar"] {{
-        background: radial-gradient(circle at 20% 10%, rgba(129,140,248,.20), transparent 28%), linear-gradient(180deg, {COLORS["sidebar_1"]} 0%, {COLORS["sidebar_2"]} 100%) !important;
-        border-right: 1px solid rgba(255,255,255,.10);
-    }}
-    [data-testid="stSidebar"] * {{
-        color: #f8fafc !important;
-    }}
-    [data-testid="stSidebar"] [data-testid="stRadio"] {{
-        background: transparent !important;
-        padding: 0 !important;
-    }}
-    [data-testid="stSidebar"] .stRadio label {{
-        border-radius: 12px;
-        padding: 5px 8px;
-    }}
-    [data-testid="stSidebar"] hr {{
-        border-color: rgba(255,255,255,.14) !important;
-    }}
-    .stMarkdown, .stText, label, p, li, .stCaption {{
-        color: {COLORS["text"]} !important;
-    }}
-    h1, h2, h3, h4, h5, h6 {{
-        color: {COLORS["text"]} !important;
-        font-weight: 850 !important;
-    }}
-    .section-title {{
-        font-size: 28px;
-        font-weight: 900;
-        color: {COLORS["text"]} !important;
-        margin-top: 30px;
-        margin-bottom: 18px;
-    }}
-    .hero {{
-        background: radial-gradient(circle at 85% 20%, rgba(129,140,248,.35), transparent 30%), radial-gradient(circle at 15% 90%, rgba(192,132,252,.28), transparent 35%), linear-gradient(135deg, {COLORS["hero_1"]} 0%, {COLORS["hero_2"]} 55%, {COLORS["hero_3"]} 100%);
-        border-radius: 30px;
-        padding: 52px;
-        color: #ffffff !important;
-        margin-bottom: 30px;
-        position: relative;
-        overflow: hidden;
-        box-shadow: 0 20px 55px {COLORS["shadow"]};
-    }}
-    .hero::after {{
-        content: "";
-        position: absolute;
-        width: 180px;
-        height: 180px;
-        border-radius: 50%;
-        border: 1px solid rgba(255,255,255,.18);
-        right: -55px;
-        top: -55px;
-    }}
-    .hero, .hero * {{
-        color: #ffffff !important;
-    }}
-    .hero-small {{
-        font-size: 13px;
-        letter-spacing: 2px;
-        opacity: .82;
-        font-weight: 800;
-    }}
-    .hero-title {{
-        font-size: 54px;
-        line-height: 1.05;
-        font-weight: 900;
-        margin-top: 15px;
-    }}
-    .hero-title span {{
-        background: linear-gradient(90deg, #93c5fd, #e9d5ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }}
-    .hero-desc {{
-        font-size: 18px;
-        line-height: 1.7;
-        max-width: 700px;
-        margin-top: 18px;
-        color: #ffffff !important;
-    }}
-    .stat-card, .journey-card, .question-card, .path-card, .ai-question-card {{
-        background: {COLORS["surface"]} !important;
-        border: 1px solid {COLORS["border"]} !important;
-        color: {COLORS["text"]} !important;
-        box-shadow: 0 12px 30px {COLORS["shadow"]};
-    }}
-    .stat-card {{
-        border-radius: 22px;
-        padding: 25px;
-        min-height: 135px;
-    }}
-    .stat-card * {{
-        color: {COLORS["text"]} !important;
-    }}
-    .stat-label {{
-        color: {COLORS["muted"]} !important;
-        font-size: 14px;
-        font-weight: 700;
-    }}
-    .stat-value {{
-        font-size: 32px;
-        font-weight: 900;
-        color: {COLORS["text"]} !important;
-        margin-top: 8px;
-    }}
-    .journey-card {{
-        border-radius: 24px;
-        padding: 25px;
-        min-height: 185px;
-        transition: transform .18s ease, box-shadow .18s ease;
-    }}
-    .journey-card:hover, .stat-card:hover, .path-card:hover, .ai-question-card:hover {{
-        transform: translateY(-3px);
-        box-shadow: 0 18px 38px {COLORS["shadow"]};
-    }}
-    .journey-card * {{
-        color: {COLORS["text"]} !important;
-    }}
-    .journey-number {{
-        font-size: 13px;
-        font-weight: 800;
-        color: {COLORS["accent"]} !important;
-    }}
-    .journey-title {{
-        font-size: 21px;
-        font-weight: 850;
-        margin-top: 10px;
-    }}
-    .journey-desc {{
-        color: {COLORS["muted"]} !important;
-        line-height: 1.6;
-        margin-top: 8px;
-    }}
-    .question-card {{
-        border-radius: 22px;
-        padding: 25px;
-        margin-top: 15px;
-    }}
-    .question-card h2, .question-card h3, .question-card p, .question-card span {{
-        color: {COLORS["text"]} !important;
-    }}
-    .skill-card {{
-        background: linear-gradient(135deg, {COLORS["surface_alt"]}, {COLORS["surface_soft"]}) !important;
-        border: 1px solid {COLORS["border"]} !important;
-        border-radius: 22px;
-        padding: 22px;
-        margin-bottom: 15px;
-        color: {COLORS["text"]} !important;
-    }}
-    .skill-card * {{
-        color: {COLORS["text"]} !important;
-    }}
-    .path-card {{
-        border-radius: 24px;
-        padding: 28px;
-    }}
-    .path-card * {{
-        color: {COLORS["text"]} !important;
-    }}
-    .big-score {{
-        font-size: 58px;
-        font-weight: 900;
-        color: {COLORS["accent"]} !important;
-    }}
-    .ai-header {{
-        background: radial-gradient(circle at 90% 15%, rgba(192,132,252,.25), transparent 30%), linear-gradient(135deg, #1e3a8a, #312e81);
-        border-radius: 24px;
-        padding: 28px 30px;
-        margin-bottom: 22px;
-        box-shadow: 0 16px 36px {COLORS["shadow"]};
-    }}
-    .ai-header, .ai-header * {{
-        color: #ffffff !important;
-    }}
-    .ai-header h1 {{
-        margin: 0;
-        font-size: 34px;
-        font-weight: 900;
-    }}
-    .ai-header p {{
-        margin-top: 10px;
-        margin-bottom: 0;
-        font-size: 17px;
-    }}
-    .ai-control-label {{
-        color: #ffffff !important;
-        background: linear-gradient(135deg, #1e3a8a, #4f46e5);
-        padding: 9px 13px;
-        border-radius: 10px;
-        font-weight: 750;
-        margin-bottom: 8px;
-    }}
-    .ai-generated-title {{
-        background: linear-gradient(135deg, #1e3a8a, #4f46e5);
-        color: #ffffff !important;
-        border-radius: 14px;
-        padding: 14px 18px;
-        font-size: 24px;
-        font-weight: 850;
-        margin-top: 24px;
-    }}
-    .ai-generated-title * {{
-        color: #ffffff !important;
-    }}
-    .ai-question-card {{
+    body {{ background-color: {COLORS["page"]}; color: {COLORS["text"]}; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
+    .stApp {{ background-color: {COLORS["page"]}; }}
+    
+    /* Hero Banner */
+    .hero-banner {{
+        background: {COLORS["accent_grad"]};
+        padding: 35px;
         border-radius: 20px;
-        padding: 20px;
-        margin-top: 20px;
+        color: white !important;
+        box-shadow: 0 15px 30px rgba(99, 102, 241, 0.3);
+        margin-bottom: 25px;
     }}
-    .ai-question-number {{
-        color: {COLORS["accent"]} !important;
-        font-weight: 800;
-        font-size: 14px;
-        margin-bottom: 10px;
-    }}
-    .ai-question-card .question-text {{
-        color: {COLORS["text"]} !important;
-        font-size: 20px;
-        font-weight: 850;
-        line-height: 1.55;
-    }}
-    [data-testid="stRadio"] {{
-        background: {COLORS["surface"]} !important;
-        border: 1px solid {COLORS["border"]} !important;
+    .hero-banner * {{ color: white !important; }}
+    
+    /* Gamification Status Bar */
+    .badge-card {{
+        background: {COLORS["card_bg"]};
+        border: 1px solid {COLORS["border"]};
         border-radius: 14px;
-        padding: 10px 14px;
-        margin-top: 8px;
+        padding: 12px 18px;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        font-weight: bold;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }}
-    [data-testid="stRadio"] label, [data-testid="stRadio"] label *, [data-testid="stRadio"] p {{
-        color: {COLORS["text"]} !important;
+
+    /* Card Box Design */
+    .custom-card {{
+        background: {COLORS["card_bg"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.03);
     }}
-    [data-baseweb="select"] > div {{
-        background: {COLORS["input_bg"]} !important;
-        border-color: {COLORS["border"]} !important;
-        color: {COLORS["text"]} !important;
-        border-radius: 12px !important;
-    }}
-    [data-baseweb="select"] * {{
-        color: {COLORS["text"]} !important;
-    }}
-    input, textarea {{
-        background: {COLORS["input_bg"]} !important;
-        color: {COLORS["text"]} !important;
-        border-color: {COLORS["border"]} !important;
-    }}
+    
+    /* Custom Modern Buttons */
     div.stButton > button {{
-        border-radius: 14px !important;
-        min-height: 48px;
-        font-weight: 800 !important;
-        border: 1px solid rgba(129,140,248,.35) !important;
-        background: linear-gradient(135deg, {COLORS["accent"]}, {COLORS["accent_2"]}) !important;
-        color: {COLORS["button_text"]} !important;
-        box-shadow: 0 8px 20px rgba(79,70,229,.18);
-        transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+        background: {COLORS["accent_grad"]} !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 10px 22px !important;
+        font-weight: bold !important;
+        transition: all 0.25s ease !important;
     }}
     div.stButton > button:hover {{
         transform: translateY(-2px);
-        filter: brightness(1.06);
-        box-shadow: 0 12px 26px rgba(79,70,229,.28);
-    }}
-    div.stButton > button:active {{
-        transform: translateY(0);
-    }}
-    div.stButton > button, div.stButton > button * {{
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-    }}
-    [data-testid="stAlert"] {{
-        border-radius: 14px !important;
-    }}
-    [data-testid="stExpander"] {{
-        background: {COLORS["surface"]} !important;
-        border: 1px solid {COLORS["border"]} !important;
-        border-radius: 14px !important;
-    }}
-    [data-testid="stExpander"] * {{
-        color: {COLORS["text"]} !important;
-    }}
-    code, pre {{
-        background: {COLORS["code_bg"]} !important;
-    }}
-    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{
-        color: {COLORS["text"]} !important;
-    }}
-    [data-testid="stProgressBar"] > div > div {{
-        background: linear-gradient(90deg, {COLORS["accent"]}, {COLORS["accent_2"]}) !important;
-    }}
-    .activity-card {{
-        background: linear-gradient(135deg, {COLORS["surface"]}, {COLORS["surface_soft"]}) !important;
-        border: 1px solid {COLORS["border"]} !important;
-        border-radius: 24px;
-        padding: 24px;
-        min-height: 190px;
-        box-shadow: 0 12px 30px {COLORS["shadow"]};
-    }}
-    .activity-card * {{
-        color: {COLORS["text"]} !important;
-    }}
-    .activity-icon {{
-        font-size: 34px;
-        margin-bottom: 10px;
-    }}
-    .activity-title {{
-        font-size: 22px;
-        font-weight: 900;
-    }}
-    .activity-desc {{
-        color: {COLORS["muted"]} !important;
-        line-height: 1.6;
-        margin-top: 8px;
-    }}
-    .footer {{
-        text-align: center;
-        color: {COLORS["muted"]} !important;
-        padding: 30px;
-        margin-top: 30px;
-        border-top: 1px solid {COLORS["border"]};
+        box-shadow: 0 8px 18px rgba(99, 102, 241, 0.4);
     }}
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
 
 # =========================================================
-# MACHINE LEARNING MODEL SETUP
-# =========================================================
-
-model = None
-feature_columns = []
-
-try:
-    model_data = df[["concept", "skill"]].copy()
-    X = pd.get_dummies(model_data, dtype=int)
-    feature_columns = X.columns.tolist()
-    y = df["error_type"]
-
-    if len(y.unique()) >= 2:
-        model = DecisionTreeClassifier(
-            max_depth=5,
-            random_state=42
-        )
-        model.fit(X, y)
-except Exception:
-    model = None
-
-
-def predict_error(concept, skill):
-    if model is None:
-        return "نمط الخطأ غير متاح" if is_arabic else "Potential error pattern unavailable"
-
-    row = pd.DataFrame([{"concept": str(concept), "skill": str(skill)}])
-    combined = pd.concat([df[["concept", "skill"]], row], ignore_index=True)
-    encoded = pd.get_dummies(combined, dtype=int)
-    
-    # FIX: Robust reindexing using saved feature columns
-    encoded = encoded.reindex(columns=feature_columns, fill_value=0)
-
-    prediction = model.predict(encoded.tail(1))[0]
-    return str(prediction)
-
-
-# =========================================================
-# QUESTION BANK
+# 8. QUESTION BANK
 # =========================================================
 
 QUESTIONS = [
-    {
-        "id": 1,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Easy",
-        "question_en": "Solve: x + 5 = 12",
-        "question_ar": "أوجد قيمة س: س + ٥ = ١٢",
-        "options": ["5", "6", "7", "8"],
-        "answer": "7",
-        "solution_en": "x + 5 = 12\nx = 12 - 5\nx = 7",
-        "solution_ar": "س + ٥ = ١٢\nس = ١٢ - ٥\nس = ٧"
-    },
-    {
-        "id": 2,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Easy",
-        "question_en": "Solve: x - 4 = 9",
-        "question_ar": "أوجد قيمة س: س - ٤ = ٩",
-        "options": ["11", "12", "13", "14"],
-        "answer": "13",
-        "solution_en": "x - 4 = 9\nx = 9 + 4\nx = 13",
-        "solution_ar": "س - ٤ = ٩\nس = ٩ + ٤\nس = ١٣"
-    },
-    {
-        "id": 3,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Easy",
-        "question_en": "Solve: 2x = 10",
-        "question_ar": "أوجد قيمة س: ٢س = ١٠",
-        "options": ["2", "5", "8", "10"],
-        "answer": "5",
-        "solution_en": "2x = 10\nx = 10 ÷ 2\nx = 5",
-        "solution_ar": "٢س = ١٠\nس = ١٠ ÷ ٢\nس = ٥"
-    },
-    {
-        "id": 4,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Easy",
-        "question_en": "Solve: x + 8 = 15",
-        "question_ar": "أوجد قيمة س: س + ٨ = ١٥",
-        "options": ["5", "6", "7", "8"],
-        "answer": "7",
-        "solution_en": "x + 8 = 15\nx = 15 - 8\nx = 7",
-        "solution_ar": "س + ٨ = ١٥\nس = ١٥ - ٨\nس = ٧"
-    },
-    {
-        "id": 5,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Easy",
-        "question_en": "Solve: x - 7 = 3",
-        "question_ar": "أوجد قيمة س: س - ٧ = ٣",
-        "options": ["4", "10", "11", "12"],
-        "answer": "10",
-        "solution_en": "x - 7 = 3\nx = 3 + 7\nx = 10",
-        "solution_ar": "س - ٧ = ٣\nس = ٣ + ٧\nس = ١٠"
-    },
-    {
-        "id": 6,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Medium",
-        "question_en": "Solve: 3x + 2 = 14",
-        "question_ar": "أوجد قيمة س: ٣س + ٢ = ١٤",
-        "options": ["3", "4", "5", "6"],
-        "answer": "4",
-        "solution_en": "3x + 2 = 14\n3x = 12\nx = 4",
-        "solution_ar": "٣س + ٢ = ١٤\n٣س = ١٢\nس = ٤"
-    },
-    {
-        "id": 7,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Medium",
-        "question_en": "Solve: 5x - 5 = 20",
-        "question_ar": "أوجد قيمة س: ٥س - ٥ = ٢٠",
-        "options": ["4", "5", "6", "7"],
-        "answer": "5",
-        "solution_en": "5x - 5 = 20\n5x = 25\nx = 5",
-        "solution_ar": "٥س - ٥ = ٢٠\n٥س = ٢٥\nس = ٥"
-    },
-    {
-        "id": 8,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Medium",
-        "question_en": "Solve: 2x + 6 = 18",
-        "question_ar": "أوجد قيمة س: ٢س + ٦ = ١٨",
-        "options": ["4", "5", "6", "7"],
-        "answer": "6",
-        "solution_en": "2x + 6 = 18\n2x = 12\nx = 6",
-        "solution_ar": "٢س + ٦ = ١٨\n٢س = ١٢\nس = ٦"
-    },
-    {
-        "id": 9,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Hard",
-        "question_en": "Solve: 4x - 7 = 21",
-        "question_ar": "أوجد قيمة س: ٤س - ٧ = ٢١",
-        "options": ["6", "7", "8", "9"],
-        "answer": "7",
-        "solution_en": "4x - 7 = 21\n4x = 28\nx = 7",
-        "solution_ar": "٤س - ٧ = ٢١\n٤س = ٢٨\nس = ٧"
-    },
-    {
-        "id": 10,
-        "concept": "Algebra",
-        "skill": "Linear Equations",
-        "difficulty": "Hard",
-        "question_en": "Solve: 6x + 4 = 40",
-        "question_ar": "أوجد قيمة س: ٦س + ٤ = ٤٠",
-        "options": ["5", "6", "7", "8"],
-        "answer": "6",
-        "solution_en": "6x + 4 = 40\n6x = 36\nx = 6",
-        "solution_ar": "٦س + ٤ = ٤٠\n٦س = ٣٦\nس = ٦"
-    },
-    {
-        "id": 11,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Easy",
-        "question_en": "What is 3 × 4?",
-        "question_ar": "ما حاصل ٣ × ٤؟",
-        "options": ["7", "10", "12", "14"],
-        "answer": "12",
-        "solution_en": "3 × 4 = 12",
-        "solution_ar": "٣ × ٤ = ١٢"
-    },
-    {
-        "id": 12,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Easy",
-        "question_en": "What is 5 × 6?",
-        "question_ar": "ما حاصل ٥ × ٦؟",
-        "options": ["20", "25", "30", "35"],
-        "answer": "30",
-        "solution_en": "5 × 6 = 30",
-        "solution_ar": "٥ × ٦ = ٣٠"
-    },
-    {
-        "id": 13,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Easy",
-        "question_en": "What is 7 × 2?",
-        "question_ar": "ما حاصل ٧ × ٢؟",
-        "options": ["12", "14", "16", "18"],
-        "answer": "14",
-        "solution_en": "7 × 2 = 14",
-        "solution_ar": "٧ × ٢ = ١٤"
-    },
-    {
-        "id": 14,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Easy",
-        "question_en": "What is 9 × 3?",
-        "question_ar": "ما حاصل ٩ × ٣؟",
-        "options": ["18", "21", "27", "30"],
-        "answer": "27",
-        "solution_en": "9 × 3 = 27",
-        "solution_ar": "٩ × ٣ = ٢٧"
-    },
-    {
-        "id": 15,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Medium",
-        "question_en": "What is 12 × 8?",
-        "question_ar": "ما حاصل ١٢ × ٨؟",
-        "options": ["86", "96", "106", "116"],
-        "answer": "96",
-        "solution_en": "12 × 8 = 96",
-        "solution_ar": "١٢ × ٨ = ٩٦"
-    },
-    {
-        "id": 16,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Medium",
-        "question_en": "What is 14 × 6?",
-        "question_ar": "ما حاصل ١٤ × ٦؟",
-        "options": ["74", "84", "94", "104"],
-        "answer": "84",
-        "solution_en": "14 × 6 = 84",
-        "solution_ar": "١٤ × ٦ = ٨٤"
-    },
-    {
-        "id": 17,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Medium",
-        "question_en": "What is 15 × 7?",
-        "question_ar": "ما حاصل ١٥ × ٧؟",
-        "options": ["95", "105", "115", "125"],
-        "answer": "105",
-        "solution_en": "15 × 7 = 105",
-        "solution_ar": "١٥ × ٧ = ١٠٥"
-    },
-    {
-        "id": 18,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Hard",
-        "question_en": "What is 24 × 12?",
-        "question_ar": "ما حاصل ٢٤ × ١٢؟",
-        "options": ["248", "288", "298", "308"],
-        "answer": "288",
-        "solution_en": "24 × 12 = 288",
-        "solution_ar": "٢٤ × ١٢ = ٢٨٨"
-    },
-    {
-        "id": 19,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Hard",
-        "question_en": "What is 36 × 15?",
-        "question_ar": "ما حاصل ٣٦ × ١٥؟",
-        "options": ["440", "520", "540", "560"],
-        "answer": "540",
-        "solution_en": "36 × 15 = 540",
-        "solution_ar": "٣٦ × ١٥ = ٥٤٠"
-    },
-    {
-        "id": 20,
-        "concept": "Arithmetic",
-        "skill": "Multiplication",
-        "difficulty": "Hard",
-        "question_en": "What is 48 × 11?",
-        "question_ar": "ما حاصل ٤٨ × ١١؟",
-        "options": ["518", "528", "538", "548"],
-        "answer": "528",
-        "solution_en": "48 × 11 = 528",
-        "solution_ar": "٤٨ × ١١ = ٥٢٨"
-    },
-    {
-        "id": 21,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Easy",
-        "question_en": "What is 10% of 50?",
-        "question_ar": "ما قيمة ١٠٪ من ٥٠؟",
-        "options": ["2", "5", "10", "15"],
-        "answer": "5",
-        "solution_en": "10% of 50 = 0.10 × 50 = 5",
-        "solution_ar": "١٠٪ من ٥٠ = ٠٫١ × ٥٠ = ٥"
-    },
-    {
-        "id": 22,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Easy",
-        "question_en": "What is 50% of 20?",
-        "question_ar": "ما قيمة ٥٠٪ من ٢٠؟",
-        "options": ["5", "10", "15", "20"],
-        "answer": "10",
-        "solution_en": "50% of 20 = 0.50 × 20 = 10",
-        "solution_ar": "٥٠٪ من ٢٠ = ٠٫٥ × ٢٠ = ١٠"
-    },
-    {
-        "id": 23,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Easy",
-        "question_en": "What is 25% of 40?",
-        "question_ar": "ما قيمة ٢٥٪ من ٤٠؟",
-        "options": ["5", "10", "15", "20"],
-        "answer": "10",
-        "solution_en": "25% of 40 = 0.25 × 40 = 10",
-        "solution_ar": "٢٥٪ من ٤٠ = ٠٫٢٥ × ٤٠ = ١٠"
-    },
-    {
-        "id": 24,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Medium",
-        "question_en": "What is 20% of 150?",
-        "question_ar": "ما قيمة ٢٠٪ من ١٥٠؟",
-        "options": ["20", "25", "30", "35"],
-        "answer": "30",
-        "solution_en": "20% of 150 = 0.20 × 150 = 30",
-        "solution_ar": "٢٠٪ من ١٥٠ = ٠٫٢ × ١٥٠ = ٣٠"
-    },
-    {
-        "id": 25,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Medium",
-        "question_en": "What is 15% of 200?",
-        "question_ar": "ما قيمة ١٥٪ من ٢٠٠؟",
-        "options": ["20", "30", "40", "50"],
-        "answer": "30",
-        "solution_en": "15% of 200 = 0.15 × 200 = 30",
-        "solution_ar": "١٥٪ من ٢٠٠ = ٠٫١٥ × ٢٠٠ = ٣٠"
-    },
-    {
-        "id": 26,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Medium",
-        "question_en": "What is 30% of 90?",
-        "question_ar": "ما قيمة ٣٠٪ من ٩٠؟",
-        "options": ["17", "27", "37", "47"],
-        "answer": "27",
-        "solution_en": "30% of 90 = 0.30 × 90 = 27",
-        "solution_ar": "٣٠٪ من ٩٠ = ٠٫٣ × ٩٠ = ٢٧"
-    },
-    {
-        "id": 27,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Hard",
-        "question_en": "An $80 item is discounted by 25%. What is the discount?",
-        "question_ar": "سعر منتج ٨٠ ريالًا، وتم تخفيضه بنسبة ٢٥٪. كم قيمة الخصم؟",
-        "options": ["10", "15", "20", "25"],
-        "answer": "20",
-        "solution_en": "25% of 80 = 0.25 × 80 = 20",
-        "solution_ar": "٢٥٪ من ٨٠ = ٠٫٢٥ × ٨٠ = ٢٠"
-    },
-    {
-        "id": 28,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Hard",
-        "question_en": "A number increases from 100 to 120. What is the percentage increase?",
-        "question_ar": "زاد عدد من ١٠٠ إلى ١٢٠. ما نسبة الزيادة؟",
-        "options": ["10%", "15%", "20%", "25%"],
-        "answer": "20%",
-        "solution_en": "Increase = 120 - 100 = 20\n20 ÷ 100 × 100 = 20%",
-        "solution_ar": "الزيادة = ١٢٠ - ١٠٠ = ٢٠\n٢٠ ÷ ١٠٠ × ١٠٠ = ٢٠٪"
-    },
-    {
-        "id": 29,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Hard",
-        "question_en": "What is 35% of 240?",
-        "question_ar": "ما قيمة ٣٥٪ من ٢٤٠؟",
-        "options": ["74", "84", "94", "104"],
-        "answer": "84",
-        "solution_en": "35% of 240 = 0.35 × 240 = 84",
-        "solution_ar": "٣٥٪ من ٢٤٠ = ٠٫٣٥ × ٢٤٠ = ٨٤"
-    },
-    {
-        "id": 30,
-        "concept": "Arithmetic",
-        "skill": "Percentages",
-        "difficulty": "Hard",
-        "question_en": "A $200 item is reduced by 15%. What is the new price?",
-        "question_ar": "سعر منتج ٢٠٠ ريال وتم تخفيضه بنسبة ١٥٪. ما السعر الجديد؟",
-        "options": ["160", "170", "180", "185"],
-        "answer": "170",
-        "solution_en": "15% of 200 = 30\n200 - 30 = 170",
-        "solution_ar": "١٥٪ من ٢٠٠ = ٣٠\n٢٠٠ - ٣٠ = ١٧٠"
-    }
+    {"id": 1, "concept": "Algebra", "skill": "Linear Equations", "question_ar": "أوجد قيمة س: س + ٥ = ١٢", "question_en": "Solve: x + 5 = 12", "options": ["5", "6", "7", "8"], "answer": "7", "solution_ar": "س = ١٢ - ٥ = ٧", "solution_en": "x = 12 - 5 = 7"},
+    {"id": 2, "concept": "Algebra", "skill": "Linear Equations", "question_ar": "أوجد قيمة س: ٢س = ١٠", "question_en": "Solve: 2x = 10", "options": ["2", "5", "8", "10"], "answer": "5", "solution_ar": "س = ١٠ ÷ ٢ = ٥", "solution_en": "x = 10 / 2 = 5"},
+    {"id": 3, "concept": "Arithmetic", "skill": "Percentages", "question_ar": "ما قيمة ١٠٪ من ٥٠؟", "question_en": "What is 10% of 50?", "options": ["2", "5", "10", "15"], "answer": "5", "solution_ar": "٠٫١ × ٥٠ = ٥", "solution_en": "0.1 * 50 = 5"},
+    {"id": 4, "concept": "Arithmetic", "skill": "Multiplication", "question_ar": "ما حاصل ضرب ١٢ × ٨؟", "question_en": "What is 12 x 8?", "options": ["86", "96", "106", "116"], "answer": "96", "solution_ar": "١٢ × ٨ = ٩٦", "solution_en": "12 * 8 = 96"},
 ]
 
 
 # =========================================================
-# HELPER FUNCTIONS
-# =========================================================
-
-def get_question_text(q):
-    return q["question_ar"] if is_arabic else q["question_en"]
-
-def get_solution(q):
-    return q["solution_ar"] if is_arabic else q["solution_en"]
-
-def get_level(score):
-    if score >= 90:
-        return L["advanced"]
-    if score >= 75:
-        return L["proficient"]
-    if score >= 50:
-        return L["developing"]
-    return L["beginner"]
-
-def start_assessment():
-    st.session_state.assessment_questions = random.sample(QUESTIONS, min(15, len(QUESTIONS)))
-    st.session_state.assessment_answers = {}
-    st.session_state.assessment_index = 0
-    st.session_state.assessment_submitted = False
-    st.session_state.before_score = None
-
-def calculate_assessment_score():
-    questions = st.session_state.assessment_questions
-    correct = 0
-    for q in questions:
-        if st.session_state.assessment_answers.get(q["id"]) == q["answer"]:
-            correct += 1
-    if not questions:
-        return 0
-    return round(correct / len(questions) * 100)
-
-
-# =========================================================
-# AI QUESTION GENERATOR FUNCTION
-# =========================================================
-
-def generate_ai_questions(skill, difficulty, count, language):
-    if client is None:
-        raise RuntimeError("Gemini API is not configured.")
-
-    prompt = f"""
-You are an educational question generator for a school learning platform called NABD.
-
-Generate exactly {count} multiple-choice mathematics questions.
-
-Skill: {skill}
-Difficulty: {difficulty}
-Language: {language}
-
-Requirements:
-1. Create exactly {count} questions.
-2. Every question must focus on the selected skill.
-3. Every question must have exactly 4 answer choices.
-4. There must be exactly one correct answer.
-5. The correct answer must appear exactly in the options.
-6. Include a short step-by-step solution.
-7. Do not repeat questions.
-8. Make the difficulty match the requested level.
-9. Return ONLY valid JSON array.
-
-Format example:
-[
-  {{
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "answer": "...",
-    "solution": "..."
-  }}
-]
-"""
-
-    schema = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "question": {"type": "string"},
-                "options": {"type": "array", "items": {"type": "string"}},
-                "answer": {"type": "string"},
-                "solution": {"type": "string"}
-            },
-            "required": ["question", "options", "answer", "solution"]
-        }
-    }
-
-    response = None
-    for attempt in range(3):
-        try:
-            # FIX: Updated model name to official stable version
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": schema
-                }
-            )
-            break
-        except Exception as e:
-            error_message = str(e)
-            if "503" in error_message or "UNAVAILABLE" in error_message:
-                if attempt < 2:
-                    time.sleep(2)
-                    continue
-            raise
-
-    if response is None:
-        raise RuntimeError("Gemini did not return a response.")
-
-    parsed = getattr(response, "parsed", None)
-    if parsed is None:
-        parsed = json.loads(response.text)
-
-    valid_questions = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-
-        question = str(item.get("question", "")).strip()
-        options = item.get("options", [])
-        answer = str(item.get("answer", "")).strip()
-        solution = str(item.get("solution", "")).strip()
-
-        if (
-            question
-            and isinstance(options, list)
-            and len(options) == 4
-            and answer
-            and solution
-            and answer in [str(option) for option in options]
-        ):
-            valid_questions.append({
-                "question": question,
-                "options": [str(option) for option in options],
-                "answer": answer,
-                "solution": solution
-            })
-
-    return valid_questions
-
-
-# =========================================================
-# SIDEBAR NAVIGATION
+# 9. SIDEBAR & NAVIGATION
 # =========================================================
 
 with st.sidebar:
-    st.markdown(
-        """
-        <div style="font-size:34px; font-weight:900; margin-bottom:5px;">🧠 NABD</div>
-        <div style="opacity:.65; font-size:12px; letter-spacing:1px;">PERSONALIZED LEARNING</div>
-        """,
-        unsafe_allow_html=True
-    )
-
+    st.markdown("<h1 style='text-align: center; font-size: 32px;'>🧠 NABD</h1>", unsafe_allow_html=True)
+    
+    st.markdown(f"""
+        <div class="badge-card">
+            <div>🔥 {st.session_state.streak} أيام</div>
+            <div>⭐ {st.session_state.user_points} نقطة</div>
+        </div>
+    """, unsafe_allow_html=True)
     st.write("")
 
-    language_choice = st.radio(
-        L["language"],
-        ["English", "العربية"],
-        index=(0 if st.session_state.lang == "English" else 1),
-        key="language_selector"
-    )
-
-    if language_choice != st.session_state.lang:
-        st.session_state.lang = language_choice
-        st.rerun()
-
-    theme_choice = st.radio(
-        L["theme"],
-        ["🌙 " + L["dark"], "☀️ " + L["light"]],
-        index=(0 if st.session_state.theme == "Dark" else 1),
-        key="theme_selector"
-    )
-
-    new_theme = "Dark" if theme_choice.startswith("🌙") else "Light"
-    if new_theme != st.session_state.theme:
-        st.session_state.theme = new_theme
-        st.rerun()
-
-    st.caption(
-        f"{L['ai_status']}: {'✓ ' + L['ai_ready'] if client is not None else '⚠ ' + L['ai_unavailable']}"
-    )
-
+    st.session_state.lang = st.radio(L["language"], ["العربية", "English"], index=0 if is_arabic else 1)
+    st.session_state.theme = st.radio(L["theme"], [L["dark"], L["light"]], index=0 if st.session_state.theme=="Dark" else 1)
+    
     st.divider()
 
-    pages = [
+    nav_options = [
         ("🏠", L["home"], "Home"),
         ("📝", L["assessment"], "Assessment"),
         ("📊", L["snapshot"], "Learning Snapshot"),
         ("🔎", L["errors"], "Error Analysis"),
-        ("🎯", L["practice"], "Smart Practice"),
-        ("🤖", L["ai_questions"], "AI Questions"),
-        ("🎉", L["activities"], "Activities"),
         ("🛤️", L["path"], "Learning Path"),
+        ("🎯", L["practice"], "Smart Practice"),
+        ("🎮", L["activities"], "Activities"),
+        ("🤖", L["ai_questions"], "AI Questions"),
         ("🔄", L["reassessment"], "Reassessment")
     ]
 
-    for icon, label, page_key in pages:
-        if st.button(f"{icon}  {label}", use_container_width=True, key=f"sidebar_{page_key}"):
+    for icon, label, page_key in nav_options:
+        if st.button(f"{icon} {label}", use_container_width=True, key=f"nav_{page_key}"):
             st.session_state.page = page_key
             st.rerun()
 
 
 # =========================================================
-# PAGE: HOME
+# PAGE 1: HOME
 # =========================================================
 
 if st.session_state.page == "Home":
-    st.markdown(
-        f"""
-        <div class="hero">
-            <div class="hero-small">{L["hero_small"]}</div>
-            <div class="hero-title">🧠 NABD<br><span>{L["hero_title2"]}</span></div>
-            <div class="hero-desc">{L["hero_desc"]}</div>
+    st.markdown(f"""
+        <div class="hero-banner">
+            <h1 style="font-size: 38px; margin-bottom: 8px;">مرحباً بك في منصة نَبْض (NABD) 🧠</h1>
+            <p style="font-size: 17px;">نظام التقييم الذكي وتشخيص المفاهيم بالألعاب والذكاء الاصطناعي.</p>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-label">{L["questions"]}</div>
-                <div class="stat-value">30</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    with col2:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-label">{L["skills"]}</div>
-                <div class="stat-value">3</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    with col3:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-label">{L["model"]}</div>
-                <div class="stat-value" style="font-size:24px;">{L["decision_tree"]}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.markdown(f'<div class="section-title">{L["journey"]}</div>', unsafe_allow_html=True)
-
-    cols = st.columns(4)
-    journey = [
-        ("01", "📝", L["assess"], L["assess_desc"]),
-        ("02", "🔎", L["analyze"], L["analyze_desc"]),
-        ("03", "🎯", L["practice_title"], L["practice_desc"]),
-        ("04", "📈", L["reassess_title"], L["reassess_desc"])
-    ]
-
-    for col, item in zip(cols, journey):
-        number, icon, title, desc = item
-        with col:
-            st.markdown(
-                f"""
-                <div class="journey-card">
-                    <div class="journey-number">{number}</div>
-                    <div style="font-size:30px; margin-top:8px;">{icon}</div>
-                    <div class="journey-title">{title}</div>
-                    <div class="journey-desc">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🔥 حماسك اليومي", f"{st.session_state.streak} أيام متتالية")
+    c2.metric("⭐ مجموع نقاطك", f"{st.session_state.user_points} نقطة")
+    c3.metric("🎯 التحديات المكتملة", "5 ألعاب تفاعلية")
 
     st.write("")
-    if st.button(f"🚀  {L['start']}", use_container_width=True, key="home_start_assessment"):
-        start_assessment()
+    if st.button("🚀 ابدأ التقييم التشخيصي الآن", use_container_width=True):
+        st.session_state.assessment_questions = random.sample(QUESTIONS, len(QUESTIONS))
         st.session_state.page = "Assessment"
         st.rerun()
 
 
 # =========================================================
-# PAGE: ASSESSMENT
+# PAGE 2: DIAGNOSTIC ASSESSMENT
 # =========================================================
 
 elif st.session_state.page == "Assessment":
-    st.title(f"📝 {L['placement']}")
-    st.write(L["placement_desc"])
-
-    if not st.session_state.assessment_questions:
-        start_assessment()
-
+    st.title("📝 التقييم التشخيصي")
+    
     if not st.session_state.assessment_submitted:
-        questions = st.session_state.assessment_questions
-        index = st.session_state.assessment_index
-        current = questions[index]
-        total = len(questions)
+        q_list = st.session_state.assessment_questions
+        if not q_list:
+            st.session_state.assessment_questions = random.sample(QUESTIONS, len(QUESTIONS))
+            q_list = st.session_state.assessment_questions
 
-        st.progress((index + 1) / total)
-        st.caption(f"{L['question']} {index + 1} {L['of']} {total}")
+        idx = st.session_state.assessment_index
+        q = q_list[idx]
 
-        st.markdown(
-            f"""
-            <div class="question-card">
-                <div style="color:{COLORS["accent"]} !important; font-weight:800; font-size:13px;">
-                    {html.escape(str(current["skill"]))} • {html.escape(str(current["difficulty"]))}
-                </div>
-                <h2>{html.escape(get_question_text(current))}</h2>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        st.progress((idx + 1) / len(q_list))
+        st.subheader(f"السؤال {idx + 1} من {len(q_list)}: {q['question_ar' if is_arabic else 'question_en']}")
+        
+        ans = st.radio(L["choose"], q["options"], key=f"q_ans_{q['id']}")
+        st.session_state.assessment_answers[q["id"]] = ans
 
-        st.write("")
-        previous_answer = st.session_state.assessment_answers.get(current["id"])
-        answer = st.radio(
-            L["choose"],
-            current["options"],
-            index=(current["options"].index(previous_answer) if previous_answer in current["options"] else None),
-            key=f"question_{current['id']}"
-        )
-        st.session_state.assessment_answers[current["id"]] = answer
+        col_p, col_n = st.columns(2)
+        if idx > 0 and col_p.button("السابق"):
+            st.session_state.assessment_index -= 1
+            st.rerun()
+        if idx < len(q_list) - 1:
+            if col_n.button("التالي"):
+                st.session_state.assessment_index += 1
+                st.rerun()
+        else:
+            if col_n.button("إنهاء واظهار النتيجة 🏁"):
+                correct = sum(1 for item in q_list if st.session_state.assessment_answers.get(item["id"]) == item["answer"])
+                score = round((correct / len(q_list)) * 100)
+                st.session_state.before_score = score
+                st.session_state.assessment_submitted = True
+                st.rerun()
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if index > 0:
-                if st.button(f"← {L['previous']}", use_container_width=True, key="assessment_previous"):
-                    st.session_state.assessment_index -= 1
-                    st.rerun()
-        with col2:
-            if index < total - 1:
-                if st.button(f"{L['next']} →", use_container_width=True, key="assessment_next"):
-                    st.session_state.assessment_index += 1
-                    st.rerun()
-            else:
-                if st.button(f"✓ {L['finish']}", use_container_width=True, key="assessment_finish"):
-                    score = calculate_assessment_score()
-                    st.session_state.before_score = score
-                    st.session_state.assessment_submitted = True
-                    st.rerun()
     else:
         score = st.session_state.before_score
-        level = get_level(score)
+        play_audio_and_effects(score)
+        
+        if score >= 75:
+            st.success(f"🎉 أسطوري! درجتك: {score}%")
+            st.markdown("### 👏 ممتاز جداً! أداؤك عالي وتفكيرك الرياضي سريع وقوي.")
+        else:
+            st.info(f"💪 بداية رائعة! درجتك: {score}%")
+            st.markdown("### 🌟 لا تقلق! الأخطاء هي بداية التعلم. المنصة جهزت لك مساراً مخصصاً لتقوية مهاراتك!")
 
-        st.markdown(
-            f"""
-            <div class="hero">
-                <div class="hero-small">NABD ASSESSMENT RESULT</div>
-                <div class="big-score" style="color:white !important;">{score}%</div>
-                <div style="font-size:24px; font-weight:800; margin-top:5px;">
-                    {L["level"]}: {level}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if st.button(f"📊 {L['snapshot']}", use_container_width=True, key="assessment_snapshot"):
+        if st.button("عرض ملخص التعلم ومسار التدريب 📊"):
             st.session_state.page = "Learning Snapshot"
             st.rerun()
 
 
 # =========================================================
-# PAGE: LEARNING SNAPSHOT
+# PAGE 3: LEARNING SNAPSHOT
 # =========================================================
 
 elif st.session_state.page == "Learning Snapshot":
-    st.title(f"📊 {L['snapshot_title']}")
-
-    if st.session_state.before_score is None:
-        st.warning(L["complete_first"])
-        st.stop()
-
-    score = st.session_state.before_score
-    questions = st.session_state.assessment_questions
-    answers = st.session_state.assessment_answers
-
-    skill_scores = {}
-    for skill in sorted(set(q["skill"] for q in questions)):
-        skill_questions = [q for q in questions if q["skill"] == skill]
-        correct = sum(1 for q in skill_questions if answers.get(q["id"]) == q["answer"])
-        skill_scores[skill] = round(correct / len(skill_questions) * 100)
-
-    weak_skills = [skill for skill, value in skill_scores.items() if value < 70]
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-label">{L["overall"]}</div>
-                <div class="stat-value">{score}%</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    with c2:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-label">{L["level"]}</div>
-                <div class="stat-value" style="font-size:25px;">{get_level(score)}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    with c3:
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <div class="stat-label">{L["assessed_skills"]}</div>
-                <div class="stat-value">{len(skill_scores)}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.markdown(f'<div class="section-title">{L["skill_performance"]}</div>', unsafe_allow_html=True)
-
-    for skill, value in skill_scores.items():
-        st.markdown(
-            f"""
-            <div class="skill-card">
-                <div style="display:flex; justify-content:space-between; font-weight:800; color:{COLORS["text"]} !important;">
-                    <span>{html.escape(str(skill))}</span>
-                    <span>{value}%</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        st.progress(value / 100)
-
-    st.markdown(f'<div class="section-title">{L["practice_needed"]}</div>', unsafe_allow_html=True)
-    if weak_skills:
-        for skill in weak_skills:
-            st.warning(f"🎯 {L['recommended']}: {skill}")
+    st.title("📊 ملخص التعلم (Learning Snapshot)")
+    
+    if st.session_state.before_score is not None:
+        c1, c2 = st.columns(2)
+        c1.metric("درجة التقييم الحالي", f"{st.session_state.before_score}%")
+        c2.metric("الحالة التعليمية", "يحتاج دعم خفيف" if st.session_state.before_score < 75 else "متقن للمفاهيم")
+        
+        st.progress(st.session_state.before_score / 100)
+        
+        st.subheader("تفاصيل أداء المهارات")
+        q_list = st.session_state.assessment_questions
+        for item in q_list:
+            u_ans = st.session_state.assessment_answers.get(item["id"])
+            is_corr = (u_ans == item["answer"])
+            status_icon = "✅" if is_corr else "❌"
+            
+            with st.expander(f"{status_icon} المهارة: {item['skill']} ({item['concept']})"):
+                st.write(f"**السؤال:** {item['question_ar' if is_arabic else 'question_en']}")
+                st.write(f"**إجابتك:** {u_ans}")
+                st.write(f"**الإجابة الصحيحة:** {item['answer']}")
+                st.write(f"💡 **خطوات الحل:** {item['solution_ar' if is_arabic else 'solution_en']}")
     else:
-        st.success(f"✓ {L['no_practice']}")
-
-    st.markdown(f'<div class="section-title">📈 {L["journey"]}</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric(L["before"], f"{score}%")
-    with c2:
-        st.metric(L["practice_title"], "→")
-    with c3:
-        if st.session_state.after_score is None:
-            st.metric(L["after"], "—")
-        else:
-            st.metric(L["after"], f"{st.session_state.after_score}%")
+        st.warning("يرجى إكمال التقييم التشخيصي أولاً لارضاء ملخص نتائجك!")
 
 
 # =========================================================
-# PAGE: ERROR ANALYSIS
+# PAGE 4: ERROR ANALYSIS
 # =========================================================
 
 elif st.session_state.page == "Error Analysis":
-    st.title(f"🔎 {L['error_title']}")
+    st.title("🔎 تحليل الأخطاء الذكي (Decision Tree Classifier)")
+    st.write("تقوم خوارزميات الذكاء الاصطناعي بتصنيف نوع خطئك لتوجيهك بشكل أفضل.")
 
-    if not st.session_state.assessment_submitted:
-        st.warning(L["complete_first"])
-        st.stop()
-
-    questions = st.session_state.assessment_questions
-    answers = st.session_state.assessment_answers
-    wrong_questions = [q for q in questions if answers.get(q["id"]) != q["answer"]]
-
-    if not wrong_questions:
-        st.success(f"✓ {L['perfect']}")
+    if clf is not None:
+        sample_concept = st.selectbox("اختر المفهوم الرياضي للتحليل:", df["concept"].unique())
+        sample_skill = st.selectbox("اختر المهارة الفرعية:", df[df["concept"] == sample_concept]["skill"].unique())
+        sample_correct = st.radio("نتيجة المحاولة:", ["صحيحة (1)", "خاطئة (0)"])
+        
+        if st.button("تحليل نوع الخطأ المتوقع 🧠"):
+            input_data = pd.DataFrame([{
+                "concept": sample_concept,
+                "skill": sample_skill,
+                "correct": 1 if "1" in sample_correct else 0
+            }])
+            input_encoded = pd.get_dummies(input_data).reindex(columns=feature_columns, fill_value=0)
+            pred_error = clf.predict(input_encoded)[0]
+            
+            st.info(f"🎯 **التشخيص:** نمط الخطأ المتوقع هو: **{pred_error}**")
+            st.markdown("💡 **توجيه معلم نبض:** يُفضل مراجعة خطوات النقل وتغيير الإشارات الرياضية بدقة.")
     else:
-        st.write(f"{len(wrong_questions)} {L['wrong']}")
-        for q in wrong_questions:
-            selected = answers.get(q["id"], "—")
-            st.markdown(
-                f"""
-                <div class="question-card">
-                    <h3>{html.escape(get_question_text(q))}</h3>
-                    <p><b>{L["your_answer"]}:</b> {html.escape(str(selected))}</p>
-                    <p><b>{L["correct_answer"]}:</b> {html.escape(str(q["answer"]))}</p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            predicted = predict_error(q["concept"], q["skill"])
-            st.info(f"🔎 {L['potential']}: {predicted}")
-
-            with st.expander(f"💡 {L['solution']}"):
-                st.code(get_solution(q), language="text")
+        st.info("جارٍ تحميل البيانات لتدريب نموذج الأخطاء...")
 
 
 # =========================================================
-# PAGE: SMART PRACTICE
-# =========================================================
-
-elif st.session_state.page == "Smart Practice":
-    st.title(f"🎯 {L['smart_title']}")
-
-    skills = sorted(set(q["skill"] for q in QUESTIONS))
-    selected_skill = st.selectbox(L["choose_skill"], skills, key="practice_skill")
-
-    if st.button(f"✨ {L['generate']}", use_container_width=True, key="practice_generate_button"):
-        pool = [q for q in QUESTIONS if q["skill"] == selected_skill]
-        st.session_state.practice_questions = random.sample(pool, min(6, len(pool)))
-        st.session_state.practice_answers = {}
-        st.rerun()
-
-    if st.session_state.practice_questions:
-        questions = st.session_state.practice_questions
-        for i, q in enumerate(questions):
-            st.markdown(
-                f"""
-                <div class="question-card">
-                    <div style="color:{COLORS["accent"]} !important; font-weight:800;">
-                        {L["question"]} {i + 1}
-                    </div>
-                    <h3>{html.escape(get_question_text(q))}</h3>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            answer = st.radio(
-                L["choose"],
-                q["options"],
-                index=None,
-                key=f"practice_answer_{i}_{q['id']}" # FIX: Safe unique keys
-            )
-            st.session_state.practice_answers[q["id"]] = answer
-
-            with st.expander(f"💡 {L['learning_point']}"):
-                st.code(get_solution(q), language="text")
-
-        if st.button(f"✓ {L['finish_practice']}", use_container_width=True, key="finish_practice_button"):
-            correct = sum(
-                1 for q in questions
-                if st.session_state.practice_answers.get(q["id"]) == q["answer"]
-            )
-            score = round(correct / len(questions) * 100)
-            st.success(f"{L['practice_complete']} {score}%")
-
-            if score >= 80:
-                st.info(f"🚀 {L['ready_reassess']}")
-            else:
-                st.warning(f"🎯 {L['more_practice']}")
-
-
-# =========================================================
-# PAGE: AI QUESTION GENERATOR
-# =========================================================
-
-elif st.session_state.page == "AI Questions":
-    st.markdown(
-        f"""
-        <div class="ai-header">
-            <h1>🤖 {L["ai_title"]}</h1>
-            <p>{L["ai_desc"]}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    skills = sorted(set(q["skill"] for q in QUESTIONS))
-    difficulties = ["Easy", "Medium", "Hard"]
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f'<div class="ai-control-label">{L["ai_skill"]}</div>', unsafe_allow_html=True)
-        selected_skill = st.selectbox(L["ai_skill"], skills, label_visibility="collapsed", key="ai_skill_select")
-    with col2:
-        st.markdown(f'<div class="ai-control-label">{L["ai_difficulty"]}</div>', unsafe_allow_html=True)
-        selected_difficulty = st.selectbox(L["ai_difficulty"], difficulties, label_visibility="collapsed", key="ai_difficulty_select")
-    with col3:
-        st.markdown(f'<div class="ai-control-label">{L["ai_count"]}</div>', unsafe_allow_html=True)
-        question_count = st.selectbox(L["ai_count"], [3, 5, 6, 8, 10], index=1, label_visibility="collapsed", key="ai_count_select")
-
-    if st.button(f"✨ {L['ai_generate']}", use_container_width=True, key="ai_generate_button"):
-        language = "Arabic" if is_arabic else "English"
-        with st.spinner("Generating questions..." if not is_arabic else "جاري إنشاء الأسئلة..."):
-            try:
-                generated_questions = generate_ai_questions(
-                    selected_skill,
-                    selected_difficulty,
-                    question_count,
-                    language
-                )
-                if not generated_questions:
-                    st.error(L["ai_error"])
-                else:
-                    st.session_state.ai_questions = generated_questions
-                    st.rerun()
-            except Exception as e:
-                st.error(L["ai_error"])
-                st.code(str(e))
-
-    if st.session_state.ai_questions:
-        st.markdown(f'<div class="ai-generated-title">🤖 {L["ai_generated"]}</div>', unsafe_allow_html=True)
-        for i, q in enumerate(st.session_state.ai_questions):
-            question_text = html.escape(str(q["question"]))
-            st.markdown(
-                f"""
-                <div class="ai-question-card">
-                    <div class="ai-question-number">{L["question"]} {i + 1}</div>
-                    <div class="question-text">{question_text}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            answer = st.radio(L["choose"], q["options"], index=None, key=f"ai_question_{i}")
-            if answer:
-                if answer == q["answer"]:
-                    st.success("✓ Correct!" if not is_arabic else "✓ إجابة صحيحة!")
-                else:
-                    st.error("✗ Incorrect" if not is_arabic else "✗ إجابة غير صحيحة")
-                    st.write(f"**{L['correct_answer']}:** {q['answer']}")
-                with st.expander(f"💡 {L['solution']}"):
-                    st.code(q["solution"], language="text")
-
-
-# =========================================================
-# PAGE: ACTIVITIES
-# =========================================================
-
-elif st.session_state.page == "Activities":
-    st.markdown(
-        f"""
-        <div class="hero">
-            <div class="hero-small">NABD • LEARN • PLAY • GROW</div>
-            <div class="hero-title">🎉 {L["activities_title"]}</div>
-            <div class="hero-desc">{L["activities_desc"]}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    activity_cols = st.columns(3)
-    activities = [
-        (activity_cols[0], "⚡", L["challenge"], L["challenge_desc"]),
-        (activity_cols[1], "🧠", L["smart_title"], L["practice_desc"]),
-        (activity_cols[2], "🤖", L["ai_title"], L["ai_desc"]),
-    ]
-
-    for col, icon, title, desc in activities:
-        with col:
-            st.markdown(
-                f"""
-                <div class="activity-card">
-                    <div class="activity-icon">{icon}</div>
-                    <div class="activity-title">{title}</div>
-                    <div class="activity-desc">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    st.write("")
-    if st.button(f"🚀 {L['start_challenge']}", use_container_width=True, key="activity_start_challenge"):
-        st.session_state.challenge_questions = random.sample(QUESTIONS, min(5, len(QUESTIONS)))
-        st.session_state.challenge_answers = {}
-        st.session_state.challenge_submitted = False
-        st.session_state.challenge_score = None
-        st.rerun()
-
-    if st.session_state.challenge_questions:
-        st.markdown(f'<div class="section-title">⚡ {L["challenge"]}</div>', unsafe_allow_html=True)
-
-        if not st.session_state.challenge_submitted:
-            questions = st.session_state.challenge_questions
-            for i, q in enumerate(questions):
-                st.markdown(
-                    f"""
-                    <div class="question-card">
-                        <div style="color:{COLORS["accent"]} !important; font-weight:800; margin-bottom:8px;">
-                            {L["question"]} {i + 1}
-                        </div>
-                        <h3>{html.escape(get_question_text(q))}</h3>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-                answer = st.radio(
-                    L["choose"],
-                    q["options"],
-                    index=None,
-                    key=f"challenge_answer_{i}_{q['id']}"
-                )
-                st.session_state.challenge_answers[q["id"]] = answer
-
-            if st.button(f"🏆 {L['finish']}", use_container_width=True, key="activity_finish_challenge"):
-                correct = sum(
-                    1 for q in questions
-                    if st.session_state.challenge_answers.get(q["id"]) == q["answer"]
-                )
-                st.session_state.challenge_score = round(correct / len(questions) * 100)
-                st.session_state.challenge_submitted = True
-                st.rerun()
-        else:
-            score = st.session_state.challenge_score
-            st.markdown(
-                f"""
-                <div class="hero">
-                    <div class="hero-small">{L["challenge_complete"]}</div>
-                    <div style="font-size:58px; font-weight:900; margin-top:10px;">{score}%</div>
-                    <div style="font-size:20px; opacity:.85;">{L["challenge_score"]}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            if st.button(f"🔁 {L['challenge_again']}", use_container_width=True, key="activity_again"):
-                st.session_state.challenge_questions = random.sample(QUESTIONS, min(5, len(QUESTIONS)))
-                st.session_state.challenge_answers = {}
-                st.session_state.challenge_submitted = False
-                st.session_state.challenge_score = None
-                st.rerun()
-
-
-# =========================================================
-# PAGE: LEARNING PATH
+# PAGE 5: LEARNING PATH
 # =========================================================
 
 elif st.session_state.page == "Learning Path":
-    st.title(f"🛤️ {L['path_title']}")
-    st.write(L["path_desc"])
+    st.title("🛤️ مسار التعلم المخصص")
+    st.write("بناءً على نتائجك، إليك الخطة المقترحة لتحسين أدائك:")
 
-    path_items = [
-        ("01", "📝", L["assess"], L["step1"]),
-        ("02", "🔎", L["analyze"], L["step2"]),
-        ("03", "🎯", L["practice_title"], L["step3"]),
-        ("04", "📈", L["reassess_title"], L["step4"])
-    ]
-
-    for number, icon, title, desc in path_items:
-        st.markdown(
-            f"""
-            <div class="path-card">
-                <div style="display:flex; align-items:center; gap:20px;">
-                    <div style="font-size:32px; font-weight:900; color:{COLORS["accent"]} !important;">{number}</div>
-                    <div>
-                        <div style="font-size:25px; font-weight:850; color:{COLORS["text"]} !important;">{icon} {title}</div>
-                        <div style="color:{COLORS["muted"]} !important; margin-top:5px;">{desc}</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        st.write("")
+    st.markdown("""
+        <div class="custom-card">
+            <h3>📍 الخطوة الأولى: التأسيس في المعادلة الجبرية</h3>
+            <p>مراجعة مفهوم النقل بتبديل الإشارة وكيفية التخلص من المعاملات.</p>
+        </div>
+        <div class="custom-card">
+            <h3>📍 الخطوة الثانية: تمارين السرعة في الحساب الذهني</h3>
+            <p>التدرب على النسب المئوية السريعة ومضاعفات الأرقام.</p>
+        </div>
+        <div class="custom-card">
+            <h3>📍 الخطوة الثالثة: خوض تحديات الفعاليات والإعادة</h3>
+            <p>التأكد من رفع النسبة لـ 90%+ عند إعادة التقييم.</p>
+        </div>
+    """, unsafe_allow_html=True)
 
 
 # =========================================================
-# PAGE: REASSESSMENT
+# PAGE 6: SMART PRACTICE
+# =========================================================
+
+elif st.session_state.page == "Smart Practice":
+    st.title("🎯 التدريب الذكي الموجه")
+    st.write("تدرب برتم هادئ ومريح دون توقيت زمني:")
+
+    p_q = QUESTIONS[0]
+    st.markdown(f"### {p_q['question_ar']}")
+    user_p = st.radio("اختر الإجابة:", p_q["options"], key="pract_1")
+    
+    if st.button("تحقق من الحل"):
+        if user_p == p_q["answer"]:
+            st.success("إجابة صحيحة وممتازة! ✨")
+        else:
+            st.error(f"حاول ثانية! الإجابة الصحيحة هي: {p_q['answer']}")
+
+
+# =========================================================
+# PAGE 7: ACTIVITIES & GAMES
+# =========================================================
+
+elif st.session_state.page == "Activities":
+    st.title("🎮 الفعاليات والألعاب التفاعلية")
+    st.write("اختر نوع الفعالية وابدأ التحدي لجمع النقاط والحفاظ على الـ Streak!")
+
+    tab1, tab2, tab3 = st.tabs(["⚡ تحدي الـ 60 ثانية", "🕵️ كاشف الأخطاء", "📅 سؤال اليوم"])
+
+    # 1. تحدي الـ 60 ثانية
+    with tab1:
+        st.subheader("⚡ تحدي السرعة (Speed Drill)")
+        st.caption("أجب على أكبر عدد من الأسئلة في دقيقة واحدة!")
+        
+        if st.button("ابدأ التحدي الان ⏱️", key="start_speed"):
+            st.session_state.timer_start = time.time()
+            st.session_state.speed_score = 0
+            st.session_state.speed_index = 0
+
+        if st.session_state.timer_start:
+            elapsed = time.time() - st.session_state.timer_start
+            time_left = max(0, 60 - int(elapsed))
+            
+            st.metric("الوقت المتبقي", f"⏱️ {time_left} ثانية")
+            
+            if time_left > 0:
+                sq = QUESTIONS[st.session_state.speed_index % len(QUESTIONS)]
+                st.write(f"**السؤال:** {sq['question_ar']}")
+                user_a = st.radio("إجابتك:", sq["options"], key=f"sp_{st.session_state.speed_index}")
+                
+                if st.button("تأكيد الإجابة 🚀", key=f"btn_sp_{st.session_state.speed_index}"):
+                    if user_a == sq["answer"]:
+                        st.session_state.speed_score += 10
+                        st.toast("إجابة صحيحة! +10 نقاط", icon="🎉")
+                    st.session_state.speed_index += 1
+                    st.rerun()
+            else:
+                st.success(f"🏆 انتهى الوقت! جمعت {st.session_state.speed_score} نقطة!")
+                play_audio_and_effects(st.session_state.speed_score)
+
+    # 2. كاشف الأخطاء
+    with tab2:
+        st.subheader("🕵️ لعبة كاشف الأخطاء (Error Detective)")
+        st.info("**المعادلة:** ٣س + ٥ = ٢٠")
+        st.write("• **الخطوة ١:** ٣س = ٢٠ + ٥")
+        st.write("• **الخطوة ٢:** ٣س = ٢٥")
+        st.write("• **الخطوة ٣:** س = ٢٥ ÷ ٣")
+
+        choice = st.radio("ما هي الخطوة التي تحتوي على الخطأ؟", ["الخطوة ١", "الخطوة ٢", "الخطوة ٣"])
+        if st.button("تحقق من الإجابة المحققة 🔍"):
+            if choice == "الخطوة ١":
+                st.balloons()
+                st.success("🎉 أحسنت يا محقق! نقل ٥ للطرف الآخر يجب أن يكون بالطرح وليس الجمع.")
+            else:
+                st.error("❌ حاول ثانية! ركز في علامة النقل في الخطوة الأولى.")
+
+    # 3. سؤال اليوم
+    with tab3:
+        st.subheader("📅 سؤال اليوم للـ Streak")
+        st.write("ما هو نصف العدد $2^{10}$ ؟")
+        ans_day = st.radio("اختر إجابتك الصحيحة:", ["2^5", "2^9", "1^10", "2^8"])
+        if st.button("إرسال إجابة اليوم 🌟"):
+            if ans_day == "2^9":
+                st.success("إجابة صحيحة! حافظت على سلسلة الاستمرار 🔥 (+1 يوم)")
+            else:
+                st.error("حاول مرة أخرى بكره!")
+
+
+# =========================================================
+# PAGE 8: AI QUESTIONS GENERATOR
+# =========================================================
+
+elif st.session_state.page == "AI Questions":
+    st.title("🤖 مولّد الأسئلة التكيّفي (Gemini AI)")
+    
+    if client:
+        selected_skill = st.selectbox("اختر المهارة:", ["Linear Equations", "Percentages", "Multiplication"])
+        selected_diff = st.select_slider("مستوى الصعوبة:", ["Easy", "Medium", "Hard"])
+        q_count = st.number_input("عدد الأسئلة:", min_value=1, max_value=5, value=2)
+
+        if st.button("توليد أسئلة جديدة بالذكاء الاصطناعي 🪄"):
+            with st.spinner("جارٍ التواصل مع Gemini لتوليد الأسئلة..."):
+                try:
+                    generated = generate_ai_questions(selected_skill, selected_diff, q_count, st.session_state.lang)
+                    st.success("تم توليد الأسئلة بنجاح!")
+                    for i, q_item in enumerate(generated):
+                        st.markdown(f"**س {i+1}: {q_item['question']}**")
+                        st.write(f"الخيارات: {', '.join(q_item['options'])}")
+                        st.caption(f"💡 الحل: {q_item['solution']}")
+                except Exception as e:
+                    st.error(f"حدث خطأ أثناء التوليد: {e}")
+    else:
+        st.warning("يرجى إضافة مفتاح GEMINI_API_KEY في ملف `.streamlit/secrets.toml` لتفعيل هذه الميزة.")
+
+
+# =========================================================
+# PAGE 9: REASSESSMENT
 # =========================================================
 
 elif st.session_state.page == "Reassessment":
-    st.title(f"🔄 {L['reassessment_title']}")
+    st.title("🔄 إعادة التقييم (قياس الأثر والتقدم)")
+    
+    if not st.session_state.reassess_submitted:
+        q_list = st.session_state.reassess_questions
+        if not q_list:
+            st.session_state.reassess_questions = random.sample(QUESTIONS, len(QUESTIONS))
+            q_list = st.session_state.reassess_questions
 
-    if st.session_state.before_score is None:
-        st.warning(L["complete_first"])
-        st.stop()
+        idx = st.session_state.reassess_index
+        q = q_list[idx]
 
-    st.write(L["reassessment_desc"])
+        st.subheader(f"سؤال إعادة التقييم {idx + 1}: {q['question_ar' if is_arabic else 'question_en']}")
+        ans = st.radio("اختر إجابتك:", q["options"], key=f"rq_ans_{q['id']}")
+        st.session_state.reassess_answers[q["id"]] = ans
 
-    if not st.session_state.reassessment_questions:
-        st.session_state.reassessment_questions = random.sample(QUESTIONS, min(10, len(QUESTIONS)))
-        st.session_state.reassessment_answers = {}
-        st.session_state.reassessment_submitted = False
+        if idx < len(q_list) - 1:
+            if st.button("السؤال التالي"):
+                st.session_state.reassess_index += 1
+                st.rerun()
+        else:
+            if st.button("إنهاء إعادة التقييم 🏆"):
+                correct = sum(1 for item in q_list if st.session_state.reassess_answers.get(item["id"]) == item["answer"])
+                st.session_state.after_score = round((correct / len(q_list)) * 100)
+                st.session_state.reassess_submitted = True
+                st.rerun()
 
-    if not st.session_state.get("reassessment_submitted", False):
-        questions = st.session_state.reassessment_questions
-        for i, q in enumerate(questions):
-            st.markdown(
-                f"""
-                <div class="question-card">
-                    <div style="color:{COLORS["accent"]} !important; font-weight:800;">
-                        {L["question"]} {i + 1}
-                    </div>
-                    <h3>{html.escape(get_question_text(q))}</h3>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            answer = st.radio(
-                L["choose"],
-                q["options"],
-                index=None,
-                key=f"reassessment_{i}_{q['id']}"
-            )
-            st.session_state.reassessment_answers[q["id"]] = answer
-
-        if st.button(f"✓ {L['finish']}", use_container_width=True, key="reassessment_finish_button"):
-            correct = sum(
-                1 for q in questions
-                if st.session_state.reassessment_answers.get(q["id"]) == q["answer"]
-            )
-            score = round(correct / len(questions) * 100)
-            st.session_state.after_score = score
-            st.session_state.reassessment_submitted = True
-            st.rerun()
     else:
-        before = st.session_state.before_score
+        before = st.session_state.before_score or 0
         after = st.session_state.after_score
-        change = after - before
-
-        st.markdown(
-            f"""
-            <div class="hero">
-                <div class="hero-small">{L["reassessment_title"].upper()}</div>
-                <div style="font-size:54px; font-weight:900; margin-top:10px;">{after}%</div>
-                <div style="font-size:20px; opacity:.8;">{L["after"]}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric(L["before"], f"{before}%")
-        with c2:
-            st.metric(L["after"], f"{after}%")
-        with c3:
-            st.metric(L["change"], f"{change:+d} {L['points']}")
-
-        st.success(f"✓ {L['completed']}")
+        
+        play_audio_and_effects(after)
+        st.balloons()
+        
+        st.success(f"🎉 أكملت إعادة التقييم بنجاح! درجتك الجديدة: {after}%")
+        
+        c1, c2 = st.columns(2)
+        c1.metric("الدرجة السابقة", f"{before}%")
+        c2.metric("الدرجة الجديدة", f"{after}%", delta=f"{after - before}%")
 
 
 # =========================================================
-# FOOTER
+# FOOTER (حقوق الملكية المحدثة)
 # =========================================================
 
-st.markdown(
-    f"""
-    <div class="footer">
-        {L["footer"]}<br>
+st.markdown("""
+    <hr>
+    <div style="text-align: center; color: #94a3b8; font-size: 14px; padding: 10px 0;">
         © 2026 MINNA MOHAMMED — NABD Educational Platform. All rights reserved.
     </div>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
