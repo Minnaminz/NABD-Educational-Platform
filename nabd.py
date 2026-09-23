@@ -119,8 +119,10 @@ for key, default in [
     ("before_score", None), ("after_score", None),
     ("reassess_questions", []), ("reassess_answers", {}),
     ("reassess_index", 0), ("reassess_submitted", False),
-    ("streak", 5), ("user_points", 320),
-    ("timer_start", None), ("speed_score", 0), ("speed_index", 0)
+    ("streak", 0), ("user_points", 0),
+    ("timer_start", None), ("speed_score", 0), ("speed_index", 0),
+    ("ai_verified", False), ("assessment_celebration_shown", False),
+    ("reassessment_celebration_shown", False)
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -133,8 +135,9 @@ is_arabic = (st.session_state.lang == "العربية")
 # 4. SOUND & EFFECTS
 # =========================================================
 
-def play_audio_and_effects(score):
-    if score >= 75:
+def play_audio_and_effects(score, event_key):
+    if score >= 75 and not st.session_state.get(event_key, False):
+        st.session_state[event_key] = True
         st.balloons()
         audio_html = """
             <audio autoplay>
@@ -171,7 +174,28 @@ Return ONLY a valid JSON array of objects with keys: "question", "options" (arra
         contents=prompt,
         config={"response_mime_type": "application/json"}
     )
-    return json.loads(response.text)
+
+    if not response.text:
+        raise ValueError("Gemini returned an empty response.")
+
+    data = json.loads(response.text)
+
+    if not isinstance(data, list):
+        raise ValueError("Gemini did not return a JSON array.")
+
+    if len(data) != count:
+        raise ValueError(f"Gemini returned {len(data)} questions instead of {count}.")
+
+    required_keys = {"question", "options", "answer", "solution"}
+    for i, item in enumerate(data, start=1):
+        if not isinstance(item, dict) or not required_keys.issubset(item):
+            raise ValueError(f"Question {i} is missing required fields.")
+        if not isinstance(item["options"], list) or len(item["options"]) != 4:
+            raise ValueError(f"Question {i} does not have exactly 4 options.")
+        if str(item["answer"]) not in [str(x) for x in item["options"]]:
+            raise ValueError(f"Question {i} has an answer that is not one of its options.")
+
+    return data
 
 
 # =========================================================
@@ -314,8 +338,21 @@ with st.sidebar:
         st.session_state.lang = selected_lang
         st.rerun()
 
-    selected_theme = st.radio(L["theme"], [L["dark"], L["light"]], index=0 if st.session_state.theme=="Dark" else 1)
-    st.session_state.theme = "Dark" if selected_theme == L["dark"] else "Light"
+    selected_theme = st.radio(
+        L["theme"],
+        [L["dark"], L["light"]],
+        index=0 if st.session_state.theme == "Dark" else 1
+    )
+    new_theme = "Dark" if selected_theme == L["dark"] else "Light"
+    if new_theme != st.session_state.theme:
+        st.session_state.theme = new_theme
+        st.rerun()
+
+    # Gemini status: this confirms configuration only; the AI page has a real connection test.
+    if client is not None:
+        st.success("🤖 Gemini: configured")
+    else:
+        st.warning("🤖 Gemini: not configured")
 
     st.divider()
 
@@ -353,11 +390,16 @@ if st.session_state.page == "Home":
     c1, c2, c3 = st.columns(3)
     c1.metric(f"🔥 {L['streak']}", f"{st.session_state.streak} {L['days']}")
     c2.metric(f"⭐ {L['points']}", f"{st.session_state.user_points}")
-    c3.metric("🎯 Activities", "3 Active Challenges")
+    c3.metric("🎯 Activities", "3")
 
     st.write("")
     if st.button(L["start_btn"], use_container_width=True):
         st.session_state.assessment_questions = random.sample(QUESTIONS, len(QUESTIONS))
+        st.session_state.assessment_answers = {}
+        st.session_state.assessment_index = 0
+        st.session_state.assessment_submitted = False
+        st.session_state.before_score = None
+        st.session_state.assessment_celebration_shown = False
         st.session_state.page = "Assessment"
         st.rerun()
 
@@ -399,11 +441,12 @@ elif st.session_state.page == "Assessment":
                 score = round((correct / len(q_list)) * 100)
                 st.session_state.before_score = score
                 st.session_state.assessment_submitted = True
+                st.session_state.user_points += correct * 10
                 st.rerun()
 
     else:
         score = st.session_state.before_score
-        play_audio_and_effects(score)
+        play_audio_and_effects(score, "assessment_celebration_shown")
 
         st.success(f"Score: {score}%")
         st.markdown(f"### {L['score_msg_high'] if score >= 75 else L['score_msg_low']}")
@@ -583,6 +626,30 @@ elif st.session_state.page == "AI Questions":
     st.title("🤖 AI Question Generator (Gemini)")
 
     if client:
+        st.success("🟢 Gemini API key is configured.")
+        st.caption("Configuration alone does not prove the API call works. Use the test below before your competition demo.")
+
+        if st.button("🧪 Test Gemini Connection"):
+            with st.spinner("Testing Gemini..."):
+                try:
+                    test_response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents="Reply with exactly: NABD AI is working.",
+                    )
+                    if test_response.text:
+                        st.session_state.ai_verified = True
+                        st.success("✅ Gemini is working! The API returned a response.")
+                        st.code(test_response.text)
+                    else:
+                        st.session_state.ai_verified = False
+                        st.error("Gemini responded, but the response was empty.")
+                except Exception as e:
+                    st.session_state.ai_verified = False
+                    st.error(f"❌ Gemini test failed: {e}")
+
+        if st.session_state.ai_verified:
+            st.info("✅ AI connection verified in this session.")
+
         selected_skill = st.selectbox("Skill:", ["Linear Equations", "Percentages", "Multiplication"])
         selected_diff = st.select_slider("Difficulty:", ["Easy", "Medium", "Hard"])
         q_count = st.number_input("Count:", min_value=1, max_value=5, value=2)
@@ -590,16 +657,23 @@ elif st.session_state.page == "AI Questions":
         if st.button(L["generate_btn"]):
             with st.spinner("Generating with Gemini AI..."):
                 try:
-                    generated = generate_ai_questions(selected_skill, selected_diff, q_count, st.session_state.lang)
+                    generated = generate_ai_questions(
+                        selected_skill,
+                        selected_diff,
+                        q_count,
+                        st.session_state.lang
+                    )
+                    st.session_state.ai_verified = True
                     st.success("Generated Successfully!")
                     for i, q_item in enumerate(generated):
                         st.markdown(f"**Q{i+1}: {q_item['question']}**")
                         st.write(f"Options: {', '.join(q_item['options'])}")
                         st.caption(f"💡 Solution: {q_item['solution']}")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.session_state.ai_verified = False
+                    st.error(f"❌ AI generation failed: {e}")
     else:
-        st.warning("Please configure GEMINI_API_KEY in `.streamlit/secrets.toml`.")
+        st.error("🔴 Gemini is not configured. Add GEMINI_API_KEY to Streamlit Secrets, then redeploy/reboot the app.")
 
 
 # =========================================================
@@ -637,12 +711,21 @@ elif st.session_state.page == "Reassessment":
         before = st.session_state.before_score or 0
         after = st.session_state.after_score
 
-        play_audio_and_effects(after)
+        play_audio_and_effects(after, "reassessment_celebration_shown")
         st.success(f"Reassessment Score: {after}%")
 
         c1, c2 = st.columns(2)
         c1.metric("Previous Score", f"{before}%")
         c2.metric("New Score", f"{after}%", delta=f"{after - before}%")
+
+        if st.button("🔄 Start Reassessment Again"):
+            st.session_state.reassess_questions = random.sample(QUESTIONS, len(QUESTIONS))
+            st.session_state.reassess_answers = {}
+            st.session_state.reassess_index = 0
+            st.session_state.reassess_submitted = False
+            st.session_state.after_score = None
+            st.session_state.reassessment_celebration_shown = False
+            st.rerun()
 
 
 # =========================================================
@@ -651,7 +734,7 @@ elif st.session_state.page == "Reassessment":
 
 st.markdown(f"""
     <hr style="margin-top:40px; border-color:{BORDER_COLOR};">
-    <div style="text-align: center; color: #94a3b8; font-size: 13px; padding: 10px 0;">
+    <div style="text-align: center; color: {TEXT_COLOR}; opacity: 0.65; font-size: 13px; padding: 10px 0;">
         {L['footer']}
     </div>
 """, unsafe_allow_html=True)
