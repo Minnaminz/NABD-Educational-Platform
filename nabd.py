@@ -811,7 +811,7 @@ elif st.session_state.page == "Activities":
         L["daily_q"]
     ])
 
-    # 1. SPEED DRILL
+        # 1. SPEED DRILL
     with tab1:
         st.subheader(L["speed_drill"])
         st.caption(L["speed_desc"])
@@ -823,8 +823,20 @@ elif st.session_state.page == "Activities":
             st.session_state.timer_start = time.time()
             st.session_state.speed_score = 0
             st.session_state.speed_index = 0
+            st.rerun()
 
-        if st.session_state.timer_start:
+        # -------------------------------------------------
+        # LIVE SPEED DRILL TIMER
+        # Streamlit automatically reruns this fragment
+        # every 1 second while the challenge is running.
+        # -------------------------------------------------
+
+        @st.fragment(run_every=1)
+        def speed_drill_live():
+
+            if st.session_state.timer_start is None:
+                return
+
             elapsed = (
                 time.time()
                 - st.session_state.timer_start
@@ -835,47 +847,88 @@ elif st.session_state.page == "Activities":
                 60 - int(elapsed)
             )
 
+            # Timer display
             st.metric(
                 L["time_left"],
                 f"⏱️ {time_left}s"
             )
 
-            if time_left > 0:
-                sq = QUESTIONS[
-                    st.session_state.speed_index
-                    % len(QUESTIONS)
-                ]
+            # -------------------------------------------------
+            # TIME IS UP
+            # -------------------------------------------------
 
-                st.write(
-                    f"**Q:** "
-                    f"{sq['question_en' if st.session_state.lang == 'English' else 'question_ar']}"
-                )
+            if time_left <= 0:
 
-                user_a = st.radio(
-                    L["choose"],
-                    sq["options"],
-                    key=f"sp_{st.session_state.speed_index}"
-                )
+                st.session_state.timer_start = None
 
-                if st.button(
-                    L["submit"],
-                    key=f"btn_sp_{st.session_state.speed_index}"
-                ):
-                    if user_a == sq["answer"]:
-                        st.session_state.speed_score += 10
-                        st.toast(
-                            "Correct! +10 pts",
-                            icon="🎉"
-                        )
-
-                    st.session_state.speed_index += 1
-                    st.rerun()
-
-            else:
                 st.success(
                     f"🏆 Time is up! Total score: "
                     f"{st.session_state.speed_score} pts!"
                 )
+
+                return
+
+            # -------------------------------------------------
+            # QUESTION
+            # -------------------------------------------------
+
+            sq = QUESTIONS[
+                st.session_state.speed_index
+                % len(QUESTIONS)
+            ]
+
+            st.write(
+                f"**Q:** "
+                f"{sq['question_en' if st.session_state.lang == 'English' else 'question_ar']}"
+            )
+
+            user_a = st.radio(
+                L["choose"],
+                sq["options"],
+                key=f"sp_{st.session_state.speed_index}"
+            )
+
+            # -------------------------------------------------
+            # SUBMIT ANSWER
+            # -------------------------------------------------
+
+            if st.button(
+                L["submit"],
+                key=f"btn_sp_{st.session_state.speed_index}"
+            ):
+
+                # Check time one more time when submitting
+                current_elapsed = (
+                    time.time()
+                    - st.session_state.timer_start
+                )
+
+                if current_elapsed >= 60:
+                    st.session_state.timer_start = None
+
+                    st.warning(
+                        f"⏰ Time is up! "
+                        f"Total score: "
+                        f"{st.session_state.speed_score} pts!"
+                    )
+
+                    return
+
+                if user_a == sq["answer"]:
+                    st.session_state.speed_score += 10
+
+                    st.toast(
+                        "Correct! +10 pts",
+                        icon="🎉"
+                    )
+
+                st.session_state.speed_index += 1
+
+                # Rerun the fragment immediately
+                st.rerun(scope="fragment")
+
+        # Run the live timer
+        speed_drill_live()
 
     # 2. ERROR DETECTIVE
     with tab2:
